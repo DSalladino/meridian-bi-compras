@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meridian BI · Compras &amp; Fornecedores</title>
+  <meta name="description" content="Painel gerencial de compras, cotações, economia, desempenho de fornecedores, prazos e preços — Grupo Meridian." />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/theme.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ---------------------------------------------------------------- -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#3a3348" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19V9M9.5 19V5M15 19v-7M20.5 19v-4" />
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">Meridian BI</div>
+          <div class="brand-sub">Procurement Suite</div>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Navegação principal">
+        <div class="nav-label">Análise</div>
+        <a class="nav-item active" data-page="exec" href="#exec">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 2.5L20 7"/></svg>
+          Visão executiva
+        </a>
+        <a class="nav-item" data-page="cotacoes" href="#cotacoes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V4h9l8.6 8.6a1.4 1.4 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.2"/></svg>
+          Cotações &amp; economia
+        </a>
+        <a class="nav-item" data-page="fornecedores" href="#fornecedores">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.1 2.5-5.2 5.5-5.2s5.5 2.1 5.5 5.2"/><path d="M16 5.6a3 3 0 0 1 0 5.8M17.5 14.6c2 .6 3.3 2.4 3.3 4.7"/></svg>
+          Fornecedores
+        </a>
+        <a class="nav-item" data-page="prazos" href="#prazos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+          Prazos &amp; qualidade
+        </a>
+        <a class="nav-item" data-page="precos" href="#precos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17 9 11l3.5 3L20 6"/><path d="M15 6h5v5"/></svg>
+          Preços &amp; reajustes
+        </a>
+        <div class="nav-label">Operação</div>
+        <a class="nav-item" data-page="dados" href="#dados">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/></svg>
+          Dados &amp; exportação
+        </a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="source-pill"><span class="dot"></span><span id="src-status">Dataset carregado</span></div>
+        <div class="tiny" id="src-detail">PostgreSQL · camada gold<br />Atualizado em —</div>
+      </div>
+    </aside>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="main">
+      <header class="topbar">
+        <div class="page-head">
+          <h1 id="page-title">Visão executiva</h1>
+          <p id="page-sub">Desempenho de compras, economia e fornecedores</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-ghost" id="btn-refresh" title="Recarregar dados da camada gold">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+            Atualizar
+          </button>
+          <button class="btn" id="btn-xlsx" title="Exportar dados filtrados para Excel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 20h16"/></svg>
+            Excel
+          </button>
+          <button class="btn btn-primary" id="btn-pdf" title="Gerar relatório executivo em PDF">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 17h4"/></svg>
+            Relatório PDF
+          </button>
+        </div>
+      </header>
+
+      <nav class="mobile-nav" aria-label="Navegação rápida">
+        <a class="mnav active" data-page="exec" href="#exec">Visão geral</a>
+        <a class="mnav" data-page="cotacoes" href="#cotacoes">Cotações</a>
+        <a class="mnav" data-page="fornecedores" href="#fornecedores">Fornecedores</a>
+        <a class="mnav" data-page="prazos" href="#prazos">Prazos</a>
+        <a class="mnav" data-page="precos" href="#precos">Preços</a>
+        <a class="mnav" data-page="dados" href="#dados">Dados</a>
+      </nav>
+
+      <div class="filters" id="filters">
+        <div class="field">
+          <label for="f-periodo">Período</label>
+          <select id="f-periodo" class="control period">
+            <option value="12">Últimos 12 meses</option>
+            <option value="3">Últimos 3 meses</option>
+            <option value="6">Últimos 6 meses</option>
+            <option value="ytd">Ano corrente (2026)</option>
+            <option value="24">Últimos 24 meses</option>
+            <option value="all">Todo o período</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+        </div>
+        <div class="field" id="date-from-wrap" style="display:none">
+          <label for="f-de">De</label>
+          <input type="date" id="f-de" class="control" />
+        </div>
+        <div class="field" id="date-to-wrap" style="display:none">
+          <label for="f-ate">Até</label>
+          <input type="date" id="f-ate" class="control" />
+        </div>
+        <div class="field">
+          <label for="f-unidade">Unidade</label>
+          <select id="f-unidade" class="control"><option value="">Todas</option></select>
+        </div>
+        <div class="field">
+          <label for="f-categoria">Categoria</label>
+          <select id="f-categoria" class="control"><option value="">Todas</option></select>
+        </div>
+        <div class="field">
+          <label for="f-comprador">Comprador</label>
+          <select id="f-comprador" class="control"><option value="">Todos</option></select>
+        </div>
+        <div class="field">
+          <label for="f-fornecedor">Fornecedor</label>
+          <select id="f-fornecedor" class="control"><option value="">Todos</option></select>
+        </div>
+        <div class="field">
+          <label for="f-status">Status do pedido</label>
+          <select id="f-status" class="control">
+            <option value="">Todos</option>
+            <option value="Entregue">Entregue</option>
+            <option value="Em trânsito">Em trânsito</option>
+            <option value="Parcial">Parcial</option>
+            <option value="Atrasado">Atrasado</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+        </div>
+        <div class="filter-spacer"></div>
+        <button class="btn btn-sm btn-ghost" id="btn-clear">Limpar filtros</button>
+      </div>
+
+      <main class="content">
+        <section class="page active" id="page-exec"></section>
+        <section class="page" id="page-cotacoes"></section>
+        <section class="page" id="page-fornecedores"></section>
+        <section class="page" id="page-prazos"></section>
+        <section class="page" id="page-precos"></section>
+        <section class="page" id="page-dados"></section>
+      </main>
+    </div>
+  </div>
+
+  <div class="chart-tip" id="tip" role="status" aria-live="polite"></div>
+  <div class="toast-wrap" id="toasts"></div>
+  <section id="print-report" aria-hidden="true"></section>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

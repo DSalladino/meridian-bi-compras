@@ -1,0 +1,9 @@
+id_categoria;categoria;grupo;criticidade;peso_spend;drift_mensal;lead_time_base_dias;natureza
+K1;Matéria-prima Metálica;Produção;Alta;27;0.0055;18;Custo direto
+K2;Componentes Eletrônicos;Produção;Alta;17;0.0038;22;Custo direto
+K3;Embalagens;Produção;Média;9;0.0028;10;Custo direto
+K4;Insumos Químicos;Produção;Alta;12;0.0045;14;Custo direto
+K5;Serviços de Logística;Serviços;Alta;16;0.005;7;Despesa operacional
+K6;Manutenção e MRO;Serviços;Média;8;0.0032;9;Despesa operacional
+K7;TI e Software;Tecnologia;Média;9;0.0018;15;Despesa administrativa
+K8;Materiais de Escritório;Administrativo;Baixa;2;0.0026;5;Despesa administrativa

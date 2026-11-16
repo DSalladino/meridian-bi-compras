@@ -1,0 +1,328 @@
+// =============================================================================
+// Meridian BI · Compras & Fornecedores — medidas DAX
+// Modelo: dim_calendario, dim_fornecedor, dim_categoria, dim_item, dim_unidade,
+//         dim_comprador, dim_contrato, fato_pedido, fato_cotacao, fato_preco,
+//         fato_orcamento
+// Convenção: medidas em português, prefixos por domínio, DIVIDE sempre protegido.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// 01 · BASE
+// -----------------------------------------------------------------------------
+Spend :=
+CALCULATE (
+    SUM ( fato_pedido[valor_total] ),
+    fato_pedido[status] <> "Cancelado"
+)
+
+Pedidos :=
+CALCULATE (
+    COUNTROWS ( fato_pedido ),
+    fato_pedido[status] <> "Cancelado"
+)
+
+Ticket Médio := DIVIDE ( [Spend], [Pedidos] )
+
+Fornecedores Ativos :=
+CALCULATE (
+    DISTINCTCOUNT ( fato_pedido[id_fornecedor] ),
+    fato_pedido[status] <> "Cancelado"
+)
+
+Itens Comprados := DISTINCTCOUNT ( fato_pedido[id_item] )
+
+Quantidade Recebida := SUM ( fato_pedido[qtd_recebida] )
+Quantidade Defeituosa := SUM ( fato_pedido[qtd_defeito] )
+
+// -----------------------------------------------------------------------------
+// 02 · ECONOMIA (SAVINGS)
+// -----------------------------------------------------------------------------
+Baseline := SUMX ( fato_pedido, fato_pedido[quantidade] * fato_pedido[preco_referencia] )
+
+Economia := SUM ( fato_pedido[saving_valor] )
+
+Taxa Economia := DIVIDE ( [Economia], [Spend] )
+
+Economia % sobre Baseline := DIVIDE ( [Economia], [Baseline] )
+
+Meta Economia := 0.06
+
+Gap Meta Economia := [Economia] - [Spend] * [Meta Economia]
+
+Economia Mês Anterior :=
+CALCULATE ( [Economia], DATEADD ( dim_calendario[data], -1, MONTH ) )
+
+Var. Economia MoM := [Economia] - [Economia Mês Anterior]
+
+Economia Acumulada Ano :=
+TOTALYTD ( [Economia], dim_calendario[data] )
+
+Economia por Requisição := DIVIDE ( [Economia], DISTINCTCOUNT ( fato_pedido[id_requisicao] ) )
+
+// Propostas: economia potencial do processo de cotação
+Economia Cotada :=
+SUMX (
+    FILTER ( fato_cotacao, fato_cotacao[selecionada] = 1 ),
+    fato_cotacao[quantidade] * ( fato_cotacao[preco_referencia] - fato_cotacao[preco_unitario] )
+)
+
+Spread Médio Cotação :=
+AVERAGEX (
+    VALUES ( fato_cotacao[id_requisicao] ),
+    VAR Maior = CALCULATE ( MAX ( fato_cotacao[valor_total] ) )
+    VAR Menor = CALCULATE ( MIN ( fato_cotacao[valor_total] ) )
+    RETURN DIVIDE ( Maior - Menor, Maior )
+)
+
+Cotações por Requisição :=
+DIVIDE (
+    COUNTROWS ( fato_cotacao ),
+    DISTINCTCOUNT ( fato_cotacao[id_requisicao] )
+)
+
+Requisições Competitivas % :=
+VAR Reqs = VALUES ( fato_cotacao[id_requisicao] )
+VAR ComTres = FILTER ( Reqs, CALCULATE ( COUNTROWS ( fato_cotacao ) ) >= 3 )
+RETURN DIVIDE ( COUNTROWS ( ComTres ), COUNTROWS ( Reqs ) )
+
+// -----------------------------------------------------------------------------
+// 03 · ORÇAMENTO
+// -----------------------------------------------------------------------------
+Orçamento := SUM ( fato_orcamento[orcamento] )
+Forecast := SUM ( fato_orcamento[forecast] )
+
+Aderência Orçamento := DIVIDE ( [Spend], [Orçamento] )
+
+Desvio Orçamento := [Spend] - [Orçamento]
+
+Desvio Orçamento % := DIVIDE ( [Desvio Orçamento], [Orçamento] )
+
+Categorias Estouradas :=
+COUNTROWS (
+    FILTER (
+        VALUES ( dim_categoria[id_categoria] ),
+        [Desvio Orçamento] > 0
+    )
+)
+
+// -----------------------------------------------------------------------------
+// 04 · PRAZOS E QUALIDADE
+// -----------------------------------------------------------------------------
+Entregas := CALCULATE ( COUNTROWS ( fato_pedido ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) )
+
+OTIF := DIVIDE ( CALCULATE ( SUM ( fato_pedido[otif] ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) ), [Entregas] )
+
+OTIF Meta := 0.9
+
+Gap OTIF := [OTIF] - [OTIF Meta]
+
+Entregas Atrasadas := CALCULATE ( COUNTROWS ( fato_pedido ), fato_pedido[atraso_dias] > 0 )
+
+% Entregas Atrasadas := DIVIDE ( [Entregas Atrasadas], [Entregas] )
+
+Atraso Médio (dias) := CALCULATE ( AVERAGE ( fato_pedido[atraso_dias] ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) )
+
+Atraso P90 (dias) :=
+CALCULATE (
+    PERCENTILEX.INC ( fato_pedido, fato_pedido[atraso_dias], 0.9 ),
+    NOT ISBLANK ( fato_pedido[data_entrega_real] )
+)
+
+Lead Time Médio (dias) :=
+CALCULATE (
+    AVERAGEX (
+        fato_pedido,
+        DATEDIFF ( fato_pedido[data_emissao], fato_pedido[data_entrega_real], DAY )
+    ),
+    NOT ISBLANK ( fato_pedido[data_entrega_real] )
+)
+
+Lead Time Planejado :=
+AVERAGEX (
+    fato_pedido,
+    DATEDIFF ( fato_pedido[data_emissao], fato_pedido[data_entrega_prevista], DAY )
+)
+
+Aderência ao Lead Time := DIVIDE ( [Lead Time Planejado], [Lead Time Médio (dias)] )
+
+Taxa de Defeito := DIVIDE ( [Quantidade Defeituosa], [Quantidade Recebida] )
+
+Nota Qualidade Média := AVERAGE ( fato_pedido[nota_qualidade] )
+
+Pedidos em Aberto :=
+CALCULATE (
+    COUNTROWS ( fato_pedido ),
+    fato_pedido[status] IN { "Em trânsito", "Parcial", "Atrasado" }
+)
+
+Valor em Aberto :=
+CALCULATE ( [Spend], fato_pedido[status] IN { "Em trânsito", "Parcial", "Atrasado" } )
+
+Taxa de Cancelamento :=
+DIVIDE (
+    CALCULATE ( COUNTROWS ( fato_pedido ), fato_pedido[status] = "Cancelado" ),
+    COUNTROWS ( fato_pedido )
+)
+
+// -----------------------------------------------------------------------------
+// 05 · FORNECEDORES
+// -----------------------------------------------------------------------------
+Concentração Top 5 :=
+VAR Total = [Spend]
+VAR Ranking =
+    ADDCOLUMNS ( VALUES ( dim_fornecedor[id_fornecedor] ), "@spend", [Spend] )
+VAR Top5 =
+    TOPN ( 5, Ranking, [@spend], DESC )
+RETURN DIVIDE ( SUMX ( Top5, [@spend] ), Total )
+
+HHI Fornecedores :=
+VAR Total = [Spend]
+VAR PorFornecedor =
+    ADDCOLUMNS ( VALUES ( dim_fornecedor[id_fornecedor] ), "@spend", [Spend] )
+VAR Positivos = FILTER ( PorFornecedor, [@spend] > 0 )
+RETURN
+    ROUND ( SUMX ( Positivos, DIVIDE ( [@spend], Total ) ^ 2 ) * 10000, 0 )
+
+Ranking Spend Fornecedor := RANKX ( ALLSELECTED ( dim_fornecedor[razao_social] ), [Spend],, DESC )
+
+Fornecedores Alto Risco :=
+CALCULATE ( [Fornecedores Ativos], dim_fornecedor[risco] = "Alto" )
+
+Spend Alto Risco :=
+CALCULATE ( [Spend], dim_fornecedor[risco] = "Alto" )
+
+% Spend Alto Risco := DIVIDE ( [Spend Alto Risco], [Spend] )
+
+Cobertura Contratual :=
+DIVIDE (
+    CALCULATE ( [Spend], fato_pedido[tem_contrato] = TRUE() ),
+    [Spend]
+)
+
+Spend Fora de Contrato :=
+CALCULATE ( [Spend], fato_pedido[tem_contrato] = FALSE() )
+
+Contratos Vigentes :=
+CALCULATE (
+    COUNTROWS ( dim_contrato ),
+    dim_contrato[status] = "Vigente"
+)
+
+Valor Contratado :=
+CALCULATE ( SUM ( dim_contrato[valor_anual] ), dim_contrato[status] = "Vigente" )
+
+Competitividade :=
+AVERAGEX (
+    FILTER ( fato_cotacao, fato_cotacao[selecionada] = 1 ),
+    1 - DIVIDE ( fato_cotacao[preco_unitario], fato_cotacao[preco_referencia] )
+)
+
+// Score composto 0–100 (prazo 35%, qualidade 25%, preço 25%, conformidade 15%)
+Score Fornecedor :=
+VAR Prazo = [OTIF]
+VAR Qualidade = 1 - MIN ( 1, [Taxa de Defeito] * 25 )
+VAR Preço = MAX ( 0, MIN ( 1, 0.5 + [Competitividade] * 2.4 ) )
+VAR Conformidade =
+    AVERAGE ( dim_fornecedor[rating_cadastral] ) / 100 * 0.7 + [Cobertura Contratual] * 0.3
+RETURN
+    ROUND ( ( Prazo * 0.35 + Qualidade * 0.25 + Preço * 0.25 + Conformidade * 0.15 ) * 100, 1 )
+
+Classificação Fornecedor :=
+SWITCH (
+    TRUE (),
+    [Score Fornecedor] >= 85, "Estratégico",
+    [Score Fornecedor] >= 70, "Preferencial",
+    [Score Fornecedor] >= 55, "Aprovado",
+    "Em desenvolvimento"
+)
+
+Fornecedor Selecionado :=
+IF (
+    HASONEVALUE ( dim_fornecedor[razao_social] ),
+    SELECTEDVALUE ( dim_fornecedor[razao_social] ),
+    "Selecione um fornecedor"
+)
+
+// -----------------------------------------------------------------------------
+// 06 · PREÇOS
+// -----------------------------------------------------------------------------
+Preço Médio Item := AVERAGE ( fato_preco[preco_medio] )
+
+Índice de Preços :=
+VAR MesAtual = MAX ( dim_calendario[ano_mes] )
+VAR MesBase = CALCULATE ( MIN ( dim_calendario[ano_mes] ), ALLSELECTED ( dim_calendario ) )
+VAR IndiceAtual =
+    CALCULATE ( AVERAGE ( fato_preco[indice_categoria] ), fato_preco[mes_ref] = MesAtual )
+VAR IndiceBase =
+    CALCULATE ( AVERAGE ( fato_preco[indice_categoria] ), fato_preco[mes_ref] = MesBase )
+RETURN DIVIDE ( IndiceAtual, IndiceBase ) * 100
+
+Variação Preços 12m :=
+VAR Atual = AVERAGE ( fato_preco[preco_medio] )
+VAR Anterior =
+    CALCULATE (
+        AVERAGE ( fato_preco[preco_medio] ),
+        DATEADD ( dim_calendario[data], -12, MONTH )
+    )
+RETURN DIVIDE ( Atual, Anterior ) - 1
+
+Impacto Financeiro Reajuste := [Spend] * [Variação Preços 12m]
+
+Itens em Alta :=
+COUNTROWS ( FILTER ( VALUES ( dim_item[id_item] ), [Variação Preços 12m] > 0.03 ) )
+
+// -----------------------------------------------------------------------------
+// 07 · TEMPO E COMPARATIVOS
+// -----------------------------------------------------------------------------
+Spend Ano Anterior :=
+CALCULATE ( [Spend], SAMEPERIODLASTYEAR ( dim_calendario[data] ) )
+
+Spend YoY % := DIVIDE ( [Spend] - [Spend Ano Anterior], [Spend Ano Anterior] )
+
+Spend MoM % :=
+VAR Anterior = CALCULATE ( [Spend], DATEADD ( dim_calendario[data], -1, MONTH ) )
+RETURN DIVIDE ( [Spend] - Anterior, Anterior )
+
+Spend Acumulado Ano := TOTALYTD ( [Spend], dim_calendario[data] )
+
+Spend Média Móvel 3M :=
+AVERAGEX (
+    DATESINPERIOD ( dim_calendario[data], MAX ( dim_calendario[data] ), -3, MONTH ),
+    [Spend]
+)
+
+Pedidos por Comprador := DIVIDE ( [Pedidos], DISTINCTCOUNT ( fato_pedido[id_comprador] ) )
+
+// -----------------------------------------------------------------------------
+// 08 · TÍTULOS DINÂMICOS E UX
+// -----------------------------------------------------------------------------
+Título Período :=
+VAR MinData = MIN ( dim_calendario[data] )
+VAR MaxData = MAX ( dim_calendario[data] )
+RETURN FORMAT ( MinData, "dd/mm/yyyy" ) & " a " & FORMAT ( MaxData, "dd/mm/yyyy" )
+
+Título Filtros :=
+CONCATENATEX (
+    FILTER (
+        VALUES ( dim_categoria[categoria] ),
+        NOT ISBLANK ( [Spend] )
+    ),
+    dim_categoria[categoria],
+    " · "
+)
+
+KPI Dinâmico :=
+SWITCH (
+    SELECTEDVALUE ( 'Parâmetros'[Indicador], "Spend" ),
+    "Spend", FORMAT ( [Spend], "R$ #.0,, mi" ),
+    "Economia", FORMAT ( [Economia], "R$ #.0,, mi" ),
+    "OTIF", FORMAT ( [OTIF], "0.0%" ),
+    "Aderência", FORMAT ( [Aderência Orçamento], "0%"),
+    FORMAT ( [Spend], "R$ #.0,, mi" )
+)
+
+Cor Semáforo OTIF :=
+SWITCH ( TRUE (), [OTIF] >= 0.9, "#7fc8a9", [OTIF] >= 0.8, "#e9c46a", "#e89b93" )
+
+Cor Semáforo Aderência :=
+SWITCH ( TRUE (), [Aderência Orçamento] <= 1, "#7fc8a9", [Aderência Orçamento] <= 1.05, "#e9c46a", "#e89b93" )

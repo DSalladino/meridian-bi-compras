@@ -1,0 +1,36 @@
+id_item;descricao;id_categoria;unidade_medida;preco_referencia;criticidade
+I001;Chapa de aço carbono 1,2 mm;K1;kg;6.85;Alta
+I002;Bobina de aço galvanizado;K1;kg;8.4;Alta
+I003;Perfil metálico U 100x50;K1;m;24.9;Média
+I004;"Tubo de aço redondo 2""";K1;m;38.7;Média
+I005;Alumínio em barra 6063;K1;kg;21.6;Média
+I006;Sensor óptico indutivo;K2;un;148;Alta
+I007;Placa controladora CLP;K2;un;1240;Alta
+I008;Cabo industrial blindado 4x1,5;K2;m;12.4;Média
+I009;Módulo I/O remoto;K2;un;685;Média
+I010;Fonte chaveada 24V 10A;K2;un;236;Baixa
+I011;Caixa papelão ondulado 40x30x30;K3;un;3.15;Média
+I012;Filme stretch 500 mm;K3;kg;14.7;Baixa
+I013;Pallet PBR 1,2x1,0;K3;un;56;Média
+I014;Etiqueta térmica 100x150;K3;milheiro;89;Baixa
+I015;Solvente industrial;K4;L;22.4;Alta
+I016;Resina epóxi bicomponente;K4;kg;34.8;Alta
+I017;Soda cáustica 98%;K4;kg;5.6;Alta
+I018;Óleo lubrificante industrial;K4;L;29.5;Média
+I019;Frete rodoviário dedicado;K5;viagem;1250;Alta
+I020;Armazenagem em CD;K5;palete/mês;46;Média
+I021;Distribuição last mile;K5;entrega;38.5;Média
+I022;Locação de empilhadeira;K5;mês;3400;Alta
+I023;Rolamento industrial 6205;K6;un;74;Média
+I024;Correia dentada HTD;K6;un;39;Baixa
+I025;Manutenção preventiva de linha;K6;h;180;Alta
+I026;Luva de proteção mecânica;K6;par;9.6;Baixa
+I027;Kit hidráulico de vedação;K6;kit;128;Média
+I028;"Notebook corporativo 14""";K7;un;5200;Média
+I029;Licença Microsoft 365 E3;K7;usuário/mês;92;Média
+I030;Suporte técnico N2;K7;h;210;Alta
+I031;Backup em nuvem;K7;TB/mês;340;Média
+I032;Switch 48 portas gerenciável;K7;un;7800;Alta
+I033;Resma papel A4 75g;K8;un;27.5;Baixa
+I034;Toner laser preto;K8;un;310;Baixa
+I035;Café torrado e moído 1 kg;K8;kg;42;Baixa

@@ -1,0 +1,17 @@
+# ambiente
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+.env
+
+# saídas do ETL / temporários
+etl/out/
+_tmp/
+*.log
+
+# SO / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

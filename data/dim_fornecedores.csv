@@ -1,0 +1,124 @@
+id_fornecedor;razao_social;id_categoria;uf;porte;status;data_homologacao;prazo_pagamento_dias;iso9001;rating_cadastral;risco;lead_time_medio_dias
+F001;Aço Vale Ltda;K1;GO;MEI;Em homologação;2024-03-04;30;Sim;72;Médio;21
+F002;Metalúrgica Andrade Industrial;K1;PR;Grande;Ativo;2023-05-15;30;Sim;85;Baixo;18
+F003;Ferro Norte S.A.;K1;SP;Médio;Ativo;2025-12-07;30;Não;82;Médio;17
+F004;Siderúrgica Bandeirante Indústria e Comércio;K1;ES;EPP;Ativo;2025-02-08;45;Não;83;Médio;24
+F005;Metais Campinas Industrial;K1;GO;Médio;Ativo;2026-04-18;45;Não;74;Médio;14
+F006;Aliança Aços Indústria e Comércio;K1;RJ;Médio;Ativo;2025-06-08;30;Sim;74;Médio;15
+F007;Ferrotec Ltda;K1;GO;MEI;Ativo;2024-10-14;30;Não;74;Médio;19
+F008;Sul Metais Indústria e Comércio;K1;SP;Médio;Ativo;2023-09-24;30;Não;75;Médio;17
+F009;Metalúrgica Horizonte Industrial;K1;CE;Grande;Ativo;2021-12-26;60;Sim;78;Médio;19
+F010;Aço Forte Indústria e Comércio;K1;SP;Médio;Ativo;2025-06-25;45;Não;79;Médio;23
+F011;Vetor Metais Comércio Ltda;K1;ES;Médio;Ativo;2025-10-21;90;Não;78;Médio;19
+F012;Sidera Brasil Comércio Ltda;K1;RJ;Grande;Inativo;2022-09-07;30;Não;84;Médio;16
+F013;Ipê Metais S.A.;K1;CE;Grande;Ativo;2025-10-14;60;Sim;87;Baixo;23
+F014;Metal Service Paraná Ltda;K1;PR;Grande;Ativo;2021-08-21;45;Sim;76;Médio;22
+F015;Centro Aço Distribuidora Industrial;K1;RJ;Grande;Ativo;2024-05-14;30;Não;64;Alto;18
+F016;TechParts Importadora S.A.;K2;ES;Grande;Ativo;2022-08-17;30;Não;81;Médio;24
+F017;AutomaSul Comércio Ltda;K2;SP;MEI;Ativo;2024-01-30;45;Sim;88;Baixo;17
+F018;Electro Minas Comércio Ltda;K2;SP;Médio;Ativo;2026-05-12;90;Sim;94;Baixo;24
+F019;Sensores Brasil Ltda;K2;BA;MEI;Ativo;2021-07-08;45;Não;77;Médio;27
+F020;Nexus Automação Indústria e Comércio;K2;RJ;Médio;Ativo;2021-08-24;45;Sim;89;Baixo;17
+F021;Delta Componentes Industrial;K2;RJ;EPP;Ativo;2024-06-01;30;Não;75;Médio;29
+F022;Instrutech S.A.;K2;PR;EPP;Ativo;2022-06-17;30;Sim;78;Médio;29
+F023;Power Drive S.A.;K2;RJ;EPP;Ativo;2026-05-10;60;Sim;84;Médio;20
+F024;Atlas Eletrônica Comércio Ltda;K2;SC;Grande;Ativo;2023-03-08;45;Sim;91;Baixo;21
+F025;MicroControl Indústria e Comércio;K2;ES;Grande;Ativo;2022-09-14;45;Não;67;Alto;29
+F026;Servotron Indústria e Comércio;K2;PE;EPP;Ativo;2024-09-18;60;Sim;74;Médio;17
+F027;Lumen Devices Comércio Ltda;K2;SC;Médio;Ativo;2022-11-05;45;Não;79;Médio;25
+F028;Alpha Sensores S.A.;K2;PR;Grande;Ativo;2023-06-21;30;Não;88;Baixo;20
+F029;Conecta Industrial Indústria e Comércio;K2;BA;EPP;Ativo;2026-01-04;90;Sim;69;Alto;28
+F030;Embalagens Bioma Distribuidora;K3;RJ;EPP;Ativo;2023-03-24;90;Não;96;Baixo;12
+F031;Cartonagem Paulista Indústria e Comércio;K3;PR;Médio;Ativo;2026-03-15;45;Sim;85;Baixo;13
+F032;EcoPack S.A.;K3;GO;EPP;Ativo;2023-08-02;30;Sim;81;Médio;11
+F033;Papel & Forma Ltda;K3;RS;Médio;Ativo;2022-01-22;60;Sim;65;Alto;10
+F034;Caixas do Sul Ltda;K3;SP;Médio;Ativo;2021-12-27;90;Sim;84;Médio;11
+F035;Verde Embalagens Ltda;K3;PE;Médio;Ativo;2025-09-09;45;Sim;87;Baixo;11
+F036;Master Pack Industrial;K3;MG;Médio;Ativo;2025-08-14;90;Não;85;Baixo;13
+F037;Onda Certa Ltda;K3;PE;EPP;Ativo;2025-12-22;30;Sim;73;Médio;8
+F038;PlastFlex Indústria e Comércio;K3;SC;Médio;Ativo;2023-10-24;45;Sim;57;Alto;9
+F039;Embalatec Indústria e Comércio;K3;ES;Médio;Suspenso;2021-05-03;60;Não;64;Alto;10
+F040;Nova Caixa Comércio Ltda;K3;SC;EPP;Ativo;2021-11-18;45;Sim;98;Baixo;11
+F041;Recicla Pack Distribuidora;K3;GO;Grande;Suspenso;2023-01-04;30;Sim;91;Baixo;8
+F042;Embalagens Bioma Filial 2 Ltda;K3;BA;Médio;Ativo;2025-02-18;30;Não;88;Baixo;11
+F043;Cartonagem Paulista Filial 2 S.A.;K3;ES;Grande;Ativo;2022-11-17;90;Sim;53;Alto;8
+F044;EcoPack Filial 2 Distribuidora;K3;SC;Grande;Inativo;2021-08-17;60;Não;92;Baixo;11
+F045;Papel & Forma Filial 2 Ltda;K3;RS;Médio;Inativo;2022-10-23;30;Não;94;Baixo;12
+F046;Química Paulista Indústria e Comércio;K4;SP;EPP;Inativo;2023-03-10;60;Não;82;Médio;11
+F047;Resinor Comércio Ltda;K4;BA;EPP;Ativo;2022-09-04;30;Sim;52;Alto;14
+F048;Solventes União Indústria e Comércio;K4;GO;Médio;Ativo;2022-01-03;60;Sim;82;Médio;16
+F049;Brasquímica Industrial;K4;RJ;Médio;Ativo;2023-03-10;45;Não;65;Alto;11
+F050;Quimisa S.A.;K4;SC;Médio;Ativo;2022-04-09;60;Sim;86;Baixo;14
+F051;Elemento Química S.A.;K4;SP;Grande;Ativo;2023-08-24;30;Sim;75;Médio;14
+F052;Petroquímica Sul Ltda;K4;PR;EPP;Ativo;2025-09-10;45;Sim;97;Baixo;14
+F053;LabChem Distribuidora;K4;CE;EPP;Ativo;2026-05-12;45;Não;81;Médio;12
+F054;Insumos Andrade Comércio Ltda;K4;SP;Médio;Ativo;2021-05-15;45;Sim;88;Baixo;18
+F055;Croma Química Comércio Ltda;K4;SP;Grande;Ativo;2024-05-27;45;Sim;83;Médio;18
+F056;Química Vital Comércio Ltda;K4;PR;MEI;Inativo;2026-03-26;30;Não;79;Médio;14
+F057;Prisma Insumos Indústria e Comércio;K4;PR;Grande;Em homologação;2025-09-15;45;Não;89;Baixo;18
+F058;Química Paulista Filial 2 Distribuidora;K4;CE;Grande;Ativo;2025-08-08;30;Sim;93;Baixo;17
+F059;Resinor Filial 2 S.A.;K4;SP;Grande;Ativo;2023-01-03;60;Não;75;Médio;11
+F060;Solventes União Filial 2 Industrial;K4;BA;Grande;Ativo;2022-07-28;30;Sim;67;Alto;15
+F061;Brasquímica Filial 2 Comércio Ltda;K4;GO;MEI;Ativo;2024-08-07;90;Não;72;Médio;11
+F062;Quimisa Filial 2 S.A.;K4;SP;Médio;Ativo;2021-08-19;60;Sim;70;Médio;13
+F063;LogPrime Transportes Industrial;K5;PE;MEI;Suspenso;2024-07-16;90;Não;86;Baixo;8
+F064;Rodo Sul Cargas Comércio Ltda;K5;PR;Médio;Ativo;2023-10-17;60;Sim;91;Baixo;8
+F065;TransBrasil Logística Ltda;K5;SP;Médio;Ativo;2023-11-18;45;Não;76;Médio;6
+F066;Operador Logístico Atlas Comércio Ltda;K5;RJ;EPP;Ativo;2021-07-08;60;Sim;90;Baixo;8
+F067;Via Rápida Distribuição Industrial;K5;PR;Médio;Ativo;2023-09-02;60;Não;70;Médio;9
+F068;Carga Certa Distribuidora;K5;SP;EPP;Ativo;2021-10-30;30;Não;84;Médio;7
+F069;Movimenta S.A.;K5;CE;MEI;Inativo;2023-04-11;60;Não;64;Alto;8
+F070;Logística Meridional S.A.;K5;PR;EPP;Em homologação;2022-05-24;30;Sim;84;Médio;7
+F071;Prime Frete Industrial;K5;RS;Grande;Ativo;2025-06-25;60;Não;94;Baixo;9
+F072;Rota Azul S.A.;K5;SP;Grande;Ativo;2024-09-23;90;Não;78;Médio;8
+F073;Expresso Guarani Comércio Ltda;K5;PE;Grande;Ativo;2024-07-12;30;Sim;74;Médio;9
+F074;InterLog Comércio Ltda;K5;RJ;EPP;Ativo;2024-09-02;90;Sim;67;Alto;6
+F075;LogPrime Transportes Filial 2 Distribuidora;K5;RJ;Grande;Ativo;2022-06-25;30;Não;84;Médio;8
+F076;Rodo Sul Cargas Filial 2 Ltda;K5;MG;MEI;Ativo;2022-11-04;60;Não;90;Baixo;8
+F077;TransBrasil Logística Filial 2 S.A.;K5;MG;Grande;Ativo;2024-02-27;45;Não;70;Médio;9
+F078;Manutenção Industrial Premier Ltda;K6;RJ;Grande;Ativo;2022-11-26;45;Sim;75;Médio;10
+F079;MRO Brasil Industrial;K6;GO;Médio;Ativo;2024-10-20;30;Sim;76;Médio;8
+F080;Rolamentos Sul Distribuidora;K6;GO;Grande;Ativo;2025-04-21;60;Não;65;Alto;12
+F081;Tecno Manutenção S.A.;K6;SP;MEI;Ativo;2022-11-12;30;Não;76;Médio;11
+F082;Peças & Cia Comércio Ltda;K6;PE;EPP;Ativo;2022-02-17;45;Não;63;Alto;8
+F083;Fixação Industrial Indústria e Comércio;K6;CE;EPP;Ativo;2022-10-18;30;Não;89;Baixo;8
+F084;Hidráulica Norte Ltda;K6;SP;Médio;Ativo;2021-09-25;60;Não;66;Alto;9
+F085;Multi MRO Distribuidora;K6;BA;Grande;Ativo;2024-05-06;60;Sim;68;Alto;10
+F086;Oficina Técnica Alfa Indústria e Comércio;K6;RJ;EPP;Ativo;2024-10-20;30;Sim;70;Médio;10
+F087;ProMaint Indústria e Comércio;K6;GO;Médio;Ativo;2021-08-21;30;Sim;78;Médio;10
+F088;Suprimentos Industriais BR Ltda;K6;PR;EPP;Ativo;2024-07-03;45;Sim;75;Médio;8
+F089;Vedação Total Ltda;K6;MG;EPP;Ativo;2023-04-14;60;Não;80;Médio;11
+F090;Manutenção Industrial Premier Filial 2 Ltda;K6;PR;Médio;Ativo;2026-01-07;45;Não;81;Médio;7
+F091;MRO Brasil Filial 2 Comércio Ltda;K6;BA;Grande;Ativo;2023-02-11;60;Não;85;Baixo;8
+F092;Rolamentos Sul Filial 2 Indústria e Comércio;K6;SC;Grande;Ativo;2023-05-06;30;Sim;66;Alto;11
+F093;Tecno Manutenção Filial 2 S.A.;K6;CE;Médio;Ativo;2024-02-04;30;Não;55;Alto;9
+F094;Peças & Cia Filial 2 Ltda;K6;SP;Grande;Ativo;2026-01-13;45;Não;89;Baixo;12
+F095;TI Corporativa Nexus Industrial;K7;SP;EPP;Ativo;2023-02-05;30;Não;60;Alto;20
+F096;Softline Brasil Indústria e Comércio;K7;SP;Médio;Ativo;2023-03-18;30;Sim;68;Alto;14
+F097;DataCore Soluções Indústria e Comércio;K7;SP;Grande;Ativo;2021-10-24;30;Não;70;Médio;17
+F098;CloudBridge Distribuidora;K7;PR;Grande;Ativo;2024-12-20;30;Sim;74;Médio;11
+F099;InfraTech Indústria e Comércio;K7;BA;EPP;Ativo;2022-04-07;90;Sim;61;Alto;16
+F100;Alfa Sistemas S.A.;K7;SP;Grande;Ativo;2025-01-07;90;Sim;86;Baixo;19
+F101;Notebooks & Cia Ltda;K7;RS;Grande;Ativo;2021-03-18;30;Sim;83;Médio;15
+F102;Security IT Industrial;K7;PE;Médio;Ativo;2024-09-24;30;Sim;77;Médio;18
+F103;Redes Sul Ltda;K7;BA;EPP;Ativo;2023-04-02;30;Não;83;Médio;14
+F104;ByteStore Indústria e Comércio;K7;CE;Médio;Ativo;2021-08-12;45;Sim;84;Médio;15
+F105;Sistema Prime S.A.;K7;ES;Grande;Ativo;2025-10-16;60;Sim;87;Baixo;13
+F106;Digital Works Comércio Ltda;K7;PE;Grande;Ativo;2021-09-07;45;Sim;69;Alto;12
+F107;TI Corporativa Nexus Filial 2 Distribuidora;K7;PR;EPP;Ativo;2023-05-18;60;Sim;81;Médio;12
+F108;Softline Brasil Filial 2 Distribuidora;K7;SP;EPP;Ativo;2021-11-12;90;Sim;81;Médio;20
+F109;DataCore Soluções Filial 2 Distribuidora;K7;SP;Médio;Inativo;2026-01-03;90;Sim;84;Médio;14
+F110;OfficeSupplies Brasil Indústria e Comércio;K8;SP;Médio;Ativo;2024-02-02;30;Não;66;Alto;6
+F111;Papelaria Central S.A.;K8;SP;MEI;Ativo;2022-05-28;45;Sim;98;Baixo;4
+F112;Suprimentos Escritório PR Industrial;K8;BA;Médio;Ativo;2022-11-10;30;Sim;75;Médio;4
+F113;Casa do Papel Distribuidora;K8;GO;EPP;Ativo;2024-04-10;30;Sim;75;Médio;5
+F114;Grafite Distribuidora Distribuidora;K8;CE;Grande;Ativo;2023-04-25;90;Sim;87;Baixo;4
+F115;Office Prime Industrial;K8;PR;EPP;Ativo;2024-03-11;90;Sim;72;Médio;6
+F116;Papel & Cia Indústria e Comércio;K8;RJ;Grande;Em homologação;2025-10-18;90;Sim;86;Baixo;5
+F117;Suprimentos Curitiba Industrial;K8;SP;Grande;Ativo;2024-06-18;30;Não;73;Médio;6
+F118;Toner Express Indústria e Comércio;K8;ES;Grande;Ativo;2024-05-01;60;Sim;98;Baixo;5
+F119;Escritório Total S.A.;K8;SP;EPP;Suspenso;2021-09-19;90;Sim;77;Médio;6
+F120;OfficeSupplies Brasil Filial 2 Ltda;K8;SP;EPP;Ativo;2025-10-04;45;Sim;54;Alto;5
+F121;Papelaria Central Filial 2 Indústria e Comércio;K8;SP;EPP;Ativo;2026-05-10;30;Não;60;Alto;5
+F122;Suprimentos Escritório PR Filial 2 Industrial;K8;PR;Médio;Ativo;2026-03-13;30;Sim;73;Médio;4
+F123;Casa do Papel Filial 2 S.A.;K8;PR;Médio;Ativo;2024-08-30;60;Não;77;Médio;6

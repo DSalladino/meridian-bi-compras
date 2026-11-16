@@ -1,0 +1,16 @@
+{
+  "name": "meridian-bi-compras",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Solução de BI para compras e gestão de fornecedores — painel analítico, modelo estrela, SQL, DAX e automação ETL.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "data": "node scripts/generate_dataset.mjs",
+    "check": "node scripts/smoke_test.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["business-intelligence", "power-bi", "purchasing", "procurement", "dax", "postgresql", "etl"],
+  "author": "Portfólio — Enterprise BI",
+  "license": "MIT"
+}
