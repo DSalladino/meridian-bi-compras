@@ -1,11 +1,11 @@
 /* Renderização das páginas analíticas. */
 import {
   brl, brlFull, num, pct, signedPct, monthLabel, dateBR, esc, SERIES, PALETTE,
-  sum, avg, groupBy, topN, median, clamp,
+  sum, avg, groupBy, median, clamp,
 } from "./util.js";
 import {
   store, periodBounds, prevBounds, applyFilters, monthsBetween, kpis, spendByMonth,
-  budgetByMonth, byCategory, supplierScorecards, priceStats, priceIndexSeries,
+  budgetByMonth, byCategory, supplierScorecards, priceStats,
   quoteStats, validSpend, delivered, storedUploadsCount, DATA_MODES, contractsOverview,
 } from "./data.js";
 import { forecastSpend, simulateRenegotiation, supplierClassification } from "./kpi.js";
@@ -14,8 +14,6 @@ import { lineChart, barChart, hbar, donut, scatter, heatmap, radar, gauge, diver
 export const ui = { ctx: null, supplier: null, item: null, page: "exec" };
 
 /* ------------------------------- helpers --------------------------------- */
-const ACCENTS = ["mint", "lilac", "blush", "butter", "sky", "sage"];
-
 function kpiCard({ label, value, sub = "", delta = null, accent = "mint", foot = "", invert = false, neutral = false }) {
   const dir = delta == null ? null : delta > 0.0005 ? "up" : delta < -0.0005 ? "down" : "flat";
   const good = neutral || dir === "flat" ? "flat" : (dir === "up") !== invert ? "" : "down";
@@ -109,7 +107,6 @@ function pageExec(c) {
   const adher = k.adherence || 0;
   const deltaSpend = k.spendDelta;
   const topSup = c.suppliers.slice(0, 10);
-  const savingRateSeries = c.monthly.map((m) => (m.valor ? m.saving / m.valor : 0));
 
   const kpisHtml = `<div class="kpis">
     ${kpiCard({ label: "Spend no período", value: brl(k.spend), sub: `${num(k.orders)} pedidos`, delta: deltaSpend, accent: "lilac", neutral: true })}
@@ -241,9 +238,8 @@ function pageCotacoes(c) {
       icon: "◇",
     });
   }
-  const { quotes: q, cats, months, k } = c;
+  const { quotes: q, cats } = c;
   const savingsByCat = cats.map((x) => ({ label: x.nome, value: x.saving, tip: `${brl(x.saving)} · ${pct(x.savingRate)} do spend`, color: PALETTE.mint }));
-  const topItems = [...new Map(c.pedidos.map((p) => [p.id_item, { label: p.item?.descricao || p.id_item, value: 0, qty: 0 }])).values()];
   const itemMap = new Map();
   for (const p of c.pedidos) {
     if (!validSpend(p)) continue;
@@ -391,7 +387,6 @@ function pageFornecedores(c) {
 
   const ufAgg = [...groupBy(suppliers, (s) => s.uf || "—").entries()].map(([uf, rows]) => ({ label: uf, value: sum(rows, (x) => x.spend), tip: `${rows.length} fornecedores` })).sort((a, b) => b.value - a.value).slice(0, 8);
 
-  const topSpend = suppliers.slice(0, 12);
   const worst = [...suppliers].filter((s) => s.orders >= 5 && s.otif != null).sort((a, b) => a.otif - b.otif).slice(0, 8).map((s) => ({
     label: s.nome, value: s.otif, color: PALETTE.blush,
     display: pct(s.otif), tip: `${brl(s.spend)} · ${s.orders} pedidos`,
@@ -664,7 +659,7 @@ function pageContratos(c) {
 }
 
 /* ------------------------------- dados / ETL ------------------------------ */
-function pageDados(c) {
+function pageDados() {
   const rows = [
     ["dim_fornecedores", "Cadastro de fornecedores", store.dim.fornecedores.length, "id_fornecedor", "gold"],
     ["dim_itens", "Catálogo de itens e preço de referência", store.dim.itens.length, "id_item", "gold"],
@@ -701,7 +696,7 @@ function pageDados(c) {
         <p>ou <button class="btn btn-sm" data-action="pick-file" style="margin-top:6px">selecionar arquivo</button> · até 5 MB</p>
         <input type="file" id="file-input" accept=".csv,text/csv" class="sr-only" />
       </div>
-      <div class="validation" id="validation"></div>
+      <div class="validation" id="validation" role="status" aria-live="polite"></div>
       <div class="hdivider"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" data-action="download-template">Baixar modelo CSV</button>
@@ -744,7 +739,7 @@ export function renderPage(page) {
         : page === "prazos" ? pagePrazos(c)
           : page === "precos" ? pagePrecos(c)
             : page === "contratos" ? pageContratos(c)
-              : pageDados(c);
+              : pageDados();
   const el = document.getElementById(`page-${page}`);
   el.innerHTML = html;
   const picker = el.querySelector("#supplier-picker");

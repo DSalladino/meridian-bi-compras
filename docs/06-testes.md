@@ -9,6 +9,7 @@ materializa o OTIF como coluna gerada.
 
 | Nível | Arquivo | O que valida |
 | --- | --- | --- |
+| Estático | `eslint.config.mjs` | código morto, global implícita, `var` e comparação frouxa (não é estilo) |
 | Unitário | `tests/kpi.test.mjs` | OTIF, spend, saving, HHI, score (inclusive sem histórico), contratos, previsão e simulação |
 | Unitário ETL | `etl/test_pipeline.py` | extração, validação, transformação, frete, saving negativo e recorte `--since` |
 | Integração do painel | `tests/parity.test.mjs` | `kpis()` e `supplierScorecards()` contra as funções canônicas |
@@ -20,6 +21,7 @@ materializa o OTIF como coluna gerada.
 ## Execução local
 
 ```bash
+npm ci && npm run lint   # ESLint (devDependencies)
 npm test                 # 21 testes Node
 npm run check            # smoke test do dataset
 npm run test:etl         # unittest do ETL (requer pandas)
@@ -52,7 +54,7 @@ npm run test:sql
 
 [`ci.yml`](../.github/workflows/ci.yml) tem dois jobs:
 
-1. **web** — Node 22, `npm test` e `npm run check`.
+1. **web** — Node 22, `npm ci`, `npm run lint`, `npm test` e `npm run check`.
 2. **etl-sql** — PostgreSQL 16 como service, testes Python, DDL, carga full, views, as 15
    consultas analíticas de `sql/03_queries_analiticas.sql`, `test:sql`, carga incremental e
    validação do log/checklist.

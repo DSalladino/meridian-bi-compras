@@ -8,12 +8,35 @@
     "start": "node server.js",
     "data": "node scripts/generate_dataset.mjs",
     "check": "node scripts/smoke_test.mjs",
+    "lint": "eslint .",
     "test": "node --test tests/kpi.test.mjs tests/parity.test.mjs tests/upload.test.mjs tests/xlsx.test.mjs tests/render.test.mjs",
     "test:sql": "node scripts/verify_sql_kpis.mjs",
     "test:etl": "python -m unittest discover -s etl -p \"test_*.py\" -v"
   },
-  "engines": { "node": ">=18" },
-  "keywords": ["business-intelligence", "power-bi", "purchasing", "procurement", "dax", "postgresql", "etl"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DSalladino/meridian-bi-compras.git"
+  },
+  "homepage": "https://dsalladino.github.io/meridian-bi-compras/app/",
+  "bugs": {
+    "url": "https://github.com/DSalladino/meridian-bi-compras/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "business-intelligence",
+    "power-bi",
+    "purchasing",
+    "procurement",
+    "dax",
+    "postgresql",
+    "etl"
+  ],
   "author": "Portfólio — Enterprise BI",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0"
+  }
 }

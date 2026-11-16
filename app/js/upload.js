@@ -124,7 +124,7 @@ function dataMax(rows) {
   return rows.reduce((m, r) => (r.data_emissao > m ? r.data_emissao : m), "0");
 }
 
-function renderValidation(v, onApply) {
+function renderValidation(v) {
   const el = document.getElementById("validation");
   if (!el) return;
   const ok = v.errors.length === 0 && v.rows.length > 0;
@@ -140,13 +140,13 @@ function renderValidation(v, onApply) {
   el.dataset.ready = ok ? "1" : "0";
 }
 
-function handleFile(file, onChange) {
+function handleFile(file) {
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) { toast("Arquivo acima de 5 MB.", "bad"); return; }
   const reader = new FileReader();
   reader.onload = () => {
     const v = validateCSV(String(reader.result), file.name);
-    renderValidation(v, onChange);
+    renderValidation(v);
     if (v.errors.length) toast(`${v.errors.length} erro(s) de validação encontrados.`, "bad");
     else toast(`${v.rows.length} registros validados com sucesso.`, "good");
   };
@@ -220,7 +220,7 @@ export function initUpload(onChange) {
     e.preventDefault();
     drop.classList.remove("over");
     const f = e.dataTransfer?.files?.[0];
-    handleFile(f, onChange);
+    handleFile(f);
   });
-  input.addEventListener("change", () => { handleFile(input.files?.[0], onChange); input.value = ""; });
+  input.addEventListener("change", () => { handleFile(input.files?.[0]); input.value = ""; });
 }

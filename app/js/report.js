@@ -1,6 +1,6 @@
 /* Relatório executivo (PDF via impressão), Excel (XLSX nativo) e CSV. */
-import { brl, brlFull, num, pct, signedPct, monthLabel, dateBR, esc, PALETTE, nowStamp, download, toCSV } from "./util.js";
-import { store, delivered, validSpend } from "./data.js";
+import { brl, brlFull, num, pct, signedPct, dateBR, esc, PALETTE, nowStamp, download, toCSV } from "./util.js";
+import { store, delivered } from "./data.js";
 import { lineChart, donut } from "./charts.js";
 import { buildXLSX } from "./xlsx.js";
 

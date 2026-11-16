@@ -22,9 +22,9 @@ exportação em Excel/PDF e upload de dados.
 | **Dataset** | 10 arquivos CSV determinísticos em `/data` (seed fixa), geração em Node e Python |
 | **ETL** | `etl/pipeline_etl.py` com validação, staging, swap atômico, **carga incremental upsert** e log de execuções |
 | **SQL** | DDL do modelo estrela, views de KPI, carteira contratual, checklist de integridade e 15 consultas analíticas |
-| **DAX** | ~60 medidas documentadas (spend, savings, OTIF, HHI, score, preço, contratos, previsão, simulação) |
+| **DAX** | 87 medidas documentadas (spend, savings, OTIF, HHI, score, preço, contratos, previsão, simulação) |
 | **Power BI / Power Query** | Consultas M para CSV e **PostgreSQL**, tema pastel, guia de modelo e caminho para PBIX via PBIP |
-| **Dashboard** | SPA em HTML/CSS/JS puro (sem build), **7 páginas**, 9 tipos de gráfico, filtros globais |
+| **Dashboard** | SPA em HTML/CSS/JS puro (sem build), **7 páginas**, 10 tipos de gráfico, filtros globais |
 | **Relatórios** | Excel nativo (`.xlsx`, 5 abas, formatação e filtros) e PDF A4 executivo |
 | **Ingestão** | Upload de CSV com validação de schema, chaves, tipos e regras de negócio |
 | **Contratos** | Vencimentos, saldo, realizado vs. contratado, execução, reajuste e exposição por fornecedor |
@@ -43,9 +43,11 @@ npm run check      # smoke test do dataset (integridade + KPIs de referência)
 npm run data       # regenera o dataset a partir da seed 20261116
 npm run test:etl   # testes unitários do pipeline (pandas)
 npm run test:sql   # reconciliação com PostgreSQL (requer DATABASE_URL)
+npm ci && npm run lint   # ESLint (só desenvolvimento: pega código morto e global implícita)
 ```
 
-Requisitos: **Node 18+** para o painel (zero dependências). Para o pipeline Python:
+Requisitos: **Node 20+** para o painel (zero dependências em runtime — ESLint e `globals`
+são `devDependencies`, usadas apenas no lint). Para o pipeline Python:
 `pip install -r etl/requirements.txt` e um PostgreSQL 16.
 
 **Demonstração online:** <https://dsalladino.github.io/meridian-bi-compras/app/>
@@ -89,7 +91,7 @@ npm start
 ### E o arquivo `.pbix`?
 
 O `.pbix` é binário e não é versionado. Em vez dele, o repositório entrega o que é
-reproduzível: DDL, Power Query M (CSV e PostgreSQL), ~60 medidas DAX, tema e um guia de
+reproduzível: DDL, Power Query M (CSV e PostgreSQL), 87 medidas DAX, tema e um guia de
 reconstrução em [`powerbi/README.md`](powerbi/README.md). O painel web cobre a mesma
 narrativa analítica e serve como demonstração imediata para quem não tem o Power BI Desktop.
 
@@ -107,6 +109,7 @@ inspeção manual:
 
 | Suíte | Cobertura | Comando |
 | --- | --- | --- |
+| **Lint** | código morto, global implícita, `var`, comparação frouxa | `npm run lint` |
 | **Node/KPI** | OTIF, savings, HHI, score com pilares ausentes, contratos, previsão, simulação | `npm test` |
 | **Dataset** | integridade, PK/FK, OTIF, KPIs de referência e smoke test | `npm run check` |
 | **Paridade** | painel × `app/js/kpi.js` (score e KPIs linha a linha) | `npm test` |
@@ -115,7 +118,7 @@ inspeção manual:
 | **ETL** | validação, transformação, frete, saving negativo e recorte incremental | `npm run test:etl` |
 | **SQL** | `vw_kpi_geral`, carteira contratual e checklist de integridade | `npm run test:sql` |
 
-O CI (`.github/workflows/ci.yml`) roda Node, Python e um PostgreSQL 16 real. A publicação
+O CI (`.github/workflows/ci.yml`) roda lint, Node, Python e um PostgreSQL 16 real. A publicação
 online usa `.github/workflows/pages.yml`. A matriz completa, casos de borda e o que fica
 fora do escopo automatizado estão em [`docs/06-testes.md`](docs/06-testes.md).
 

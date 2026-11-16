@@ -1,7 +1,7 @@
 /* Bootstrap da aplicação: navegação, filtros globais e exportações. */
 import { store, loadData, defaultFilters, DATA_MODES } from "./data.js";
 import { renderPage, ui, buildContext } from "./pages.js";
-import { bindTooltips, toast, monthLabel, dateBR, num, esc } from "./util.js";
+import { bindTooltips, toast, monthLabel, num, esc } from "./util.js";
 import { exportExcel, exportPDF, exportPedidos, exportCotacoes } from "./report.js";
 import { initUpload } from "./upload.js";
 
@@ -100,9 +100,30 @@ async function applyDataMode(mode, successMessage) {
   }
 }
 
+/**
+ * Dá nome acessível a cada gráfico: leitor de tela anuncia a seção do card.
+ * Feito no DOM (e não em cada chart) para valer também para gráficos futuros.
+ */
+function annotateCharts() {
+  document.querySelectorAll("svg.chart").forEach((svg) => {
+    const card = svg.closest(".card");
+    const heading = card?.querySelector("h3, h2, .card-head strong");
+    const label = (heading?.textContent || "Gráfico do painel").trim().replace(/\s+/g, " ");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", svg.getAttribute("aria-label") || label);
+    if (!svg.querySelector("title")) {
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = label;
+      svg.prepend(title);
+    }
+    if (!svg.hasAttribute("focusable")) svg.setAttribute("focusable", "false");
+  });
+}
+
 function refresh() {
   try {
     renderPage(current);
+    annotateCharts();
     updateSidebar();
     if (current === "dados") initUpload(() => refresh());
   } catch (err) {

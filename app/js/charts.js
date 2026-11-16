@@ -44,7 +44,7 @@ export function legend(items) {
 export function lineChart({ labels, series, height = 230, yFmt = fmtAxis, area = true, target = null, yMax = null, xLabelEvery = 0 }) {
   const W = 780, H = height;
   const m = { t: 18, r: 16, b: 28, l: 54 };
-  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const iw = W - m.l - m.r;
   const all = series.flatMap((s) => s.values.filter((v) => Number.isFinite(v)));
   const rawMax = Math.max(yMax || 0, ...all, target ? target.value : 0);
   const sc = scaleY(rawMax, m.t, H - m.b);
@@ -74,7 +74,7 @@ export function lineChart({ labels, series, height = 230, yFmt = fmtAxis, area =
     paths += `<path d="${smoothPath(pts)}" fill="none" stroke="${color}" stroke-width="${s.dashed ? 1.8 : 2.4}"
       ${s.dashed ? 'stroke-dasharray="5 4"' : ""} stroke-linecap="round" stroke-linejoin="round"/>`;
     if (labels.length <= 14) {
-      paths += pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="${s.dashed ? 2.6 : 3.4}" fill="#fff" stroke="${color}" stroke-width="2"/>`).join("");
+      paths += pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="${s.dashed ? 2.6 : 3.4}" fill="#fff" stroke="${color}" stroke-width="2"/>`).join("");
     }
     paths += s.values.map((v, i) => (Number.isFinite(v)
       ? `<circle cx="${x(i)}" cy="${sc.y(v)}" r="11" fill="transparent" data-tip="${esc(s.name)} · ${esc(axisLabel(labels[i]))}\n${yFmt(v)}"/>`
@@ -104,7 +104,7 @@ export function lineChart({ labels, series, height = 230, yFmt = fmtAxis, area =
 export function barChart({ labels, series, height = 230, yFmt = fmtAxis, stacked = false, target = null, colors = SERIES }) {
   const W = 780, H = height;
   const m = { t: 18, r: 16, b: 28, l: 54 };
-  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const iw = W - m.l - m.r;
   const sums = labels.map((_, i) => series.reduce((s, x) => s + (x.values[i] || 0), 0));
   const maxV = stacked ? Math.max(...sums) : Math.max(...series.flatMap((s) => s.values));
   const sc = scaleY(Math.max(maxV, target ? target.value : 0), m.t, H - m.b);
@@ -149,7 +149,7 @@ export function barChart({ labels, series, height = 230, yFmt = fmtAxis, stacked
 }
 
 /* ------------------------------ barras horizon. --------------------------- */
-export function hbar({ items, fmt = brl, height = null, labelWidth = 190, showValue = true, color = SERIES[0], extra = null }) {
+export function hbar({ items, fmt = brl, height = null, labelWidth = 190, showValue = true, color = SERIES[0] }) {
   const W = 780;
   const rowH = 27;
   const H = height || items.length * rowH + 8;
@@ -196,13 +196,14 @@ export function donut({ items, center, size = 240, fmt = brl, thickness = 26 }) 
 }
 
 /* -------------------------------- dispersão -------------------------------- */
-export function scatter({ points, height = 350, xLabel = "", yLabel = "", xFmt = brl, yFmt = (v) => num(v, 0), quadrants = null, yMax = null, xMax = null, logX = false }) {
+export function scatter({ points, height = 350, xLabel = "", yLabel = "", xFmt = brl, yFmt = (v) => num(v, 0), quadrants = null, yMax = null, xMax = null }) {
   const W = 780, H = height;
   const m = { t: 18, r: 20, b: 42, l: 62 };
-  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const iw = W - m.l - m.r;
   const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
   const xMaxV = xMax || Math.max(...xs, 1) * 1.06;
   const yMaxV = yMax || Math.max(...ys, 0.001) * 1.1;
+  const ih = H - m.t - m.b;
   const X = (v) => m.l + (v / xMaxV) * iw;
   const Y = (v) => m.t + ih - (v / yMaxV) * ih;
   const sc = scaleY(yMaxV, m.t, m.t + ih);

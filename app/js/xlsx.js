@@ -124,7 +124,7 @@ function colName(n) {
   return s;
 }
 
-function sheetXML({ columns, rows, freeze = true, totalRow = false }) {
+function sheetXML({ columns, rows, freeze = true }) {
   const cols = columns.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width || 16}" customWidth="1"/>`).join("");
   const head = `<row r="1" ht="22" customHeight="1">${columns.map((c, i) =>
     `<c r="${colName(i + 1)}1" s="1" t="inlineStr"><is><t>${xml(c.header)}</t></is></c>`).join("")}</row>`;
