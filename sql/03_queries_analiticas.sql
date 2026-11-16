@@ -188,7 +188,7 @@ WITH meses AS (
            row_number() OVER (ORDER BY mes_ref) AS t
     FROM dw.fato_pedido
     WHERE status <> 'Cancelado'
-      AND mes_ref >= to_char((SELECT max(mes_ref)::date FROM dw.fato_pedido) - interval '6 months', 'YYYY-MM')
+      AND mes_ref >= to_char((SELECT to_date(max(mes_ref) || '-01', 'YYYY-MM-DD') FROM dw.fato_pedido) - interval '6 months', 'YYYY-MM')
     GROUP BY mes_ref
 ),
 reg AS (
@@ -197,8 +197,9 @@ reg AS (
            max(t) AS t_max
     FROM meses
 )
-SELECT to_char((SELECT max(mes_ref)::date FROM dw.fato_pedido) + (g.n || ' month')::interval, 'YYYY-MM') AS mes_previsto,
-       round(greatest(0, reg.intercept + reg.slope * (reg.t_max + g.n)), 2) AS spend_previsto
+SELECT to_char((SELECT to_date(max(mes_ref) || '-01', 'YYYY-MM-DD') FROM dw.fato_pedido) + (g.n || ' month')::interval, 'YYYY-MM') AS mes_previsto,
+       -- regr_* retornam double precision; round(numeric, int) exige cast explícito
+       round(greatest(0, reg.intercept + reg.slope * (reg.t_max + g.n))::numeric, 2) AS spend_previsto
 FROM reg
 CROSS JOIN generate_series(1, 3) AS g(n)
 ORDER BY g.n;
