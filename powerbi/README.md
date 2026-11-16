@@ -3,6 +3,25 @@
 O `.pbix` é binário e não é versionado. Este guia reconstrói o relatório a partir do
 repositório em ~20 minutos.
 
+## Por que não versionamos o `.pbix`
+
+- É um binário proprietário: diff, revisão e merge não são auditáveis.
+- O que importa para reproduzir está no repositório: DDL, Power Query M, medidas DAX, tema
+  e este passo a passo.
+- A demonstração executável é o painel web em `/app` (veja capturas em
+  [`../docs/capturas/`](../docs/capturas/)).
+
+Se o arquivo for publicado no futuro, prefira um link de **release** ou SharePoint, nunca
+um blob no histórico do Git.
+
+## Evidências visuais
+
+- [Visão executiva](../docs/capturas/visao-executiva.png)
+- [Fornecedores](../docs/capturas/fornecedores.png)
+- [Prazos & qualidade](../docs/capturas/prazos-qualidade.png)
+- [Preços & reajustes](../docs/capturas/precos-reajustes.png)
+- [Dados & exportação](../docs/capturas/dados-exportacao.png)
+
 ## 1. Conectar o modelo
 
 Duas opções:
@@ -43,7 +62,11 @@ Crie as relações conforme `docs/02-modelo-dados.md`. Pontos de atenção:
 
 Cole o conteúdo de [`../dax/medidas.dax`](../dax/medidas.dax) em uma tabela de medidas
 (`_Medidas`). As metas estão como medidas (`Meta Economia`, `OTIF Meta`) para permitir
-ajuste sem editar fórmulas.
+aljuste sem editar fórmulas.
+
+A medida `OTIF` é calculada pela regra canônica (prazo + completude + qualidade), sem
+depender do flag do CSV. Use `OTIF por Flag` e `Divergência OTIF` para auditar a carga;
+a divergência deve ser zero.
 
 ## 5. Tema
 

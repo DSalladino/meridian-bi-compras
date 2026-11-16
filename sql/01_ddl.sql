@@ -7,6 +7,8 @@
 CREATE SCHEMA IF NOT EXISTS dw;
 COMMENT ON SCHEMA dw IS 'Camada gold — modelo dimensional de compras e fornecedores';
 
+-- DROP ... CASCADE é exclusivo da reinstalação local do modelo (setup destrutivo).
+-- A carga recorrente do ETL não usa CASCADE; veja etl/pipeline_etl.py.
 DROP TABLE IF EXISTS dw.fato_preco, dw.fato_orcamento, dw.fato_cotacao, dw.fato_pedido,
                      dw.dim_contrato, dw.dim_fornecedor, dw.dim_item, dw.dim_categoria,
                      dw.dim_comprador, dw.dim_unidade, dw.dim_calendario CASCADE;
@@ -138,13 +140,21 @@ CREATE TABLE dw.fato_pedido (
     qtd_recebida           numeric(14, 3) NOT NULL DEFAULT 0,
     qtd_defeito            numeric(14, 3) NOT NULL DEFAULT 0,
     status                 varchar(14) NOT NULL CHECK (status IN ('Entregue', 'Em trânsito', 'Parcial', 'Atrasado', 'Cancelado')),
-    otif                   smallint NOT NULL CHECK (otif IN (0, 1)),
+    -- Fonte única da regra: prazo + completude + qualidade.
+    otif                   smallint GENERATED ALWAYS AS (
+                               CASE WHEN status = 'Entregue'
+                                     AND atraso_dias = 0
+                                     AND qtd_recebida >= quantidade
+                                     AND qtd_defeito = 0
+                                    THEN 1 ELSE 0 END
+                           ) STORED,
     nota_qualidade         numeric(2, 1) CHECK (nota_qualidade BETWEEN 1 AND 5),
     CONSTRAINT ck_pedido_datas CHECK (data_entrega_real IS NULL OR data_entrega_real >= data_emissao),
     CONSTRAINT ck_pedido_recebido CHECK (qtd_recebida <= quantidade * 1.05),
     CONSTRAINT ck_pedido_defeito CHECK (qtd_defeito <= qtd_recebida)
 );
 COMMENT ON TABLE dw.fato_pedido IS 'Pedidos de compra emitidos. valor_total inclui frete; saving = (referência - negociado) × quantidade, negativo quando houve sobrepreço';
+COMMENT ON COLUMN dw.fato_pedido.otif IS 'Gerado no banco: 1 somente se status=Entregue, atraso_dias=0, qtd_recebida>=quantidade e qtd_defeito=0';
 CREATE INDEX ix_pedido_data ON dw.fato_pedido (data_emissao);
 CREATE INDEX ix_pedido_fornecedor ON dw.fato_pedido (id_fornecedor);
 CREATE INDEX ix_pedido_categoria ON dw.fato_pedido (id_categoria);

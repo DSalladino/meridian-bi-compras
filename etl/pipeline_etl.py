@@ -6,7 +6,7 @@ Etapas:
   1. EXTRACT   lê os CSVs versionados em /data
   2. VALIDATE  aplica regras de qualidade (schema, chaves, domínios, regras de negócio)
   3. TRANSFORM deriva colunas, normaliza tipos e deduplica
-  4. LOAD      carrega as tabelas dw.* em ordem de dependência (TRUNCATE + COPY/INSERT)
+  4. LOAD      staging temporário + validação + swap atômico (TRUNCATE sem CASCADE + INSERT)
   5. REPORT    grava um relatório de qualidade em JSON e imprime o resumo
 
 Uso:
@@ -48,7 +48,7 @@ TABLES = [
 DATE_COLS = ["data_emissao", "data_entrega_prevista", "data_entrega_real", "data_cotacao",
              "data_homologacao", "data_inicio", "data_fim"]
 NUM_COLS = ["quantidade", "valor_unitario", "frete", "valor_total", "preco_referencia",
-            "saving_valor", "atraso_dias", "qtd_recebida", "qtd_defeito", "nota_qualidade",
+            "saving_valor", "atraso_dias", "qtd_recebida", "qtd_defeito", "otif", "nota_qualidade",
             "preco_unitario", "prazo_entrega_dias", "prazo_pagamento_dias", "selecionada",
             "preco_medio", "indice_categoria", "variacao_mm_pct", "orcamento", "forecast",
             "peso_spend", "drift_mensal", "lead_time_base_dias", "rating_cadastral",
@@ -161,10 +161,15 @@ def validate(frames: dict[str, pd.DataFrame], rep: Report) -> None:
     rep.add("fato_pedido", "compras acima da referência", acima_ref / max(1, len(ped)) < 0.2,
             f"{acima_ref} pedidos ({acima_ref / max(1, len(ped)) * 100:.1f}%) — savings negativo", severity="warning")
 
-    otif_inconsistente = int((((ped["status"] == "Entregue") & (ped["atraso_dias"] == 0)
-                              & (ped["qtd_defeito"] == 0)) != (ped["otif"] == 1)).sum())
-    rep.add("fato_pedido", "OTIF coerente com prazo e qualidade", otif_inconsistente == 0,
+    otif_esperado = ((ped["status"] == "Entregue") & (ped["atraso_dias"] == 0)
+                     & (ped["qtd_recebida"] >= ped["quantidade"])
+                     & (ped["qtd_defeito"] == 0))
+    otif_inconsistente = int((otif_esperado != (ped["otif"] == 1)).sum())
+    rep.add("fato_pedido", "OTIF coerente com prazo, completude e qualidade", otif_inconsistente == 0,
             f"{otif_inconsistente} divergências", severity="warning")
+    parciais_com_otif = int(((ped["qtd_recebida"] < ped["quantidade"]) & (ped["otif"] == 1)).sum())
+    rep.add("fato_pedido", "entrega parcial nunca é OTIF", parciais_com_otif == 0,
+            f"{parciais_com_otif} entregas parciais marcadas como OTIF")
 
     cot = frames["fato_cotacao"]
     selecionadas = cot.groupby("id_requisicao")["selecionada"].sum()
@@ -194,6 +199,11 @@ def transform(frames: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     out = {k: v.copy() for k, v in frames.items()}
     ped = out["fato_pedido"]
     ped["tem_contrato"] = ped["tem_contrato"].astype(int)
+    # Recalcula a flag canônica; o PostgreSQL também a gera como STORED.
+    ped["otif"] = ((ped["status"] == "Entregue")
+                   & (ped["atraso_dias"] == 0)
+                   & (ped["qtd_recebida"] >= ped["quantidade"])
+                   & (ped["qtd_defeito"] == 0)).astype(int)
     ped["mes_calendario"] = ped["data_emissao"].dt.to_period("M").astype(str)
     # valor_total é a fonte da verdade; recomputa o frete implícito quando divergir
     esperado = ped["quantidade"] * ped["valor_unitario"]
@@ -206,6 +216,15 @@ def transform(frames: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
 
 
 def load(frames: dict[str, pd.DataFrame], dsn: str) -> None:
+    """Carga transacional em duas fases: staging + swap atômico.
+
+    - Nenhuma tabela de destino é tocada antes de todas as linhas estarem em
+      tabelas temporárias e as contagens conferirem.
+    - O swap usa um único TRUNCATE sem CASCADE, listando explicitamente as
+      tabelas do processo. Se existir uma FK externa apontando para dw.*, a
+      operação falha em vez de apagar dados fora do escopo.
+    - Qualquer erro faz rollback do lote inteiro (inclusive o TRUNCATE).
+    """
     import psycopg2  # import local: permite rodar --validate-only sem o driver
     from psycopg2.extras import execute_values
 
@@ -224,31 +243,62 @@ def load(frames: dict[str, pd.DataFrame], dsn: str) -> None:
                         "id_item", "id_categoria", "id_comprador", "id_unidade", "quantidade",
                         "valor_unitario", "frete", "valor_total", "preco_referencia", "saving_valor",
                         "modalidade", "tem_contrato", "data_entrega_prevista", "data_entrega_real",
-                        "atraso_dias", "qtd_recebida", "qtd_defeito", "status", "otif", "nota_qualidade"],
+                        "atraso_dias", "qtd_recebida", "qtd_defeito", "status", "nota_qualidade"],
+        # otif é GENERATED ALWAYS no PostgreSQL: não é carregado.
         "fato_cotacao": ["id_requisicao", "data_cotacao", "id_item", "id_categoria", "id_fornecedor",
                          "quantidade", "preco_unitario", "frete", "valor_total", "prazo_entrega_dias",
                          "prazo_pagamento_dias", "selecionada", "preco_referencia"],
         "fato_preco": ["mes_ref", "id_item", "id_categoria", "preco_medio", "indice_categoria", "variacao_mm_pct"],
         "fato_orcamento": ["mes_ref", "id_categoria", "id_unidade", "orcamento", "forecast"],
     }
+    targets = [table for table, _, _ in TABLES]
+
     with psycopg2.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute("SET search_path TO dw, public")
-            for table, _, _ in TABLES:
+            # Serializa cargas concorrentes sem bloquear leituras até o swap.
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", ("meridian.etl.load.v1",))
+
+            # Fase 1 — staging: nada no destino é alterado ainda.
+            print("  staging (nenhuma tabela de destino foi alterada)")
+            for table in targets:
                 df = frames[table][cols[table]].copy()
                 for col in df.columns:
                     if str(df[col].dtype).startswith("datetime"):
                         df[col] = df[col].dt.date
-                cur.execute(f"TRUNCATE TABLE dw.{table} CASCADE")
                 values = [tuple(None if pd.isna(v) else (v.item() if hasattr(v, "item") else v) for v in row)
                           for row in df.itertuples(index=False, name=None)]
+                stg = f"stg_{table}"
+                cur.execute(f"CREATE TEMP TABLE {stg} (LIKE dw.{table} INCLUDING DEFAULTS) ON COMMIT DROP")
                 execute_values(
                     cur,
-                    f"INSERT INTO dw.{table} ({', '.join(cols[table])}) VALUES %s",
+                    f"INSERT INTO {stg} ({', '.join(cols[table])}) VALUES %s",
                     values,
                     page_size=2000,
                 )
-                print(f"  carregado dw.{table:<16} {len(values):>6} linhas")
+                cur.execute(f"SELECT count(*) FROM {stg}")
+                staged = int(cur.fetchone()[0])
+                if staged != len(values):
+                    raise RuntimeError(f"staging de {table}: {staged} linhas, esperado {len(values)}")
+                print(f"  staging {stg:<22} {staged:>6} linhas validadas")
+
+            # Fase 2 — swap atômico. A lista explícita evita CASCADE.
+            print("  swap atômico (TRUNCATE sem CASCADE + INSERT ... SELECT)")
+            cur.execute("TRUNCATE TABLE " + ", ".join(f"dw.{table}" for table in targets))
+            for table in targets:
+                columns = ", ".join(cols[table])
+                cur.execute(
+                    f"INSERT INTO dw.{table} ({columns}) "
+                    f"SELECT {columns} FROM stg_{table}"
+                )
+                cur.execute(f"SELECT count(*) FROM dw.{table}")
+                loaded = int(cur.fetchone()[0])
+                if loaded != len(frames[table]):
+                    raise RuntimeError(f"carga de {table}: {loaded} linhas, esperado {len(frames[table])}")
+                cur.execute(f"ANALYZE dw.{table}")
+                print(f"  carregado dw.{table:<16} {loaded:>6} linhas")
+
+        # Commit único: staging e swap entram juntos; erro => rollback do lote.
         conn.commit()
 
 

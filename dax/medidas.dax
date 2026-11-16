@@ -110,7 +110,28 @@ COUNTROWS (
 // -----------------------------------------------------------------------------
 Entregas := CALCULATE ( COUNTROWS ( fato_pedido ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) )
 
-OTIF := DIVIDE ( CALCULATE ( SUM ( fato_pedido[otif] ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) ), [Entregas] )
+// Regra canônica: prazo + completude + qualidade (não depende do flag do CSV).
+OTIF :=
+VAR Base =
+    FILTER (
+        fato_pedido,
+        NOT ISBLANK ( fato_pedido[data_entrega_real] )
+            && fato_pedido[status] = "Entregue"
+            && fato_pedido[atraso_dias] = 0
+            && fato_pedido[qtd_recebida] >= fato_pedido[quantidade]
+            && fato_pedido[qtd_defeito] = 0
+    )
+RETURN
+    DIVIDE ( COUNTROWS ( Base ), [Entregas] )
+
+// Auditoria: compara a regra canônica com o flag persistido.
+OTIF por Flag :=
+DIVIDE (
+    CALCULATE ( SUM ( fato_pedido[otif] ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) ),
+    [Entregas]
+)
+
+Divergência OTIF := [OTIF] - [OTIF por Flag]
 
 OTIF Meta := 0.9
 

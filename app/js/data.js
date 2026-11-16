@@ -148,6 +148,15 @@ export async function loadData(mode = store.mode) {
   return store;
 }
 
+/** Regra única de OTIF: prazo + completude + qualidade. */
+export function computeOtif(p) {
+  return p.status === "Entregue"
+    && Number(p.atraso_dias || 0) === 0
+    && Number(p.qtd_recebida || 0) >= Number(p.quantidade || 0)
+    && Number(p.qtd_defeito || 0) === 0
+    ? 1 : 0;
+}
+
 export function buildIndex() {
   const fById = new Map(store.dim.fornecedores.map((f) => [f.id_fornecedor, f]));
   const cById = new Map(store.dim.categorias.map((c) => [c.id_categoria, c]));
@@ -164,6 +173,8 @@ export function buildIndex() {
     p.comprador = kById.get(p.id_comprador);
     p.mes = p.data_emissao?.slice(0, 7) || p.mes_ref;
     p.ano = p.mes?.slice(0, 4);
+    // Recalcula no cliente para não confiar cegamente no flag do CSV.
+    p.otif = computeOtif(p);
   }
   for (const q of store.fato.cotacoes) {
     q.fornecedor = fById.get(q.id_fornecedor);

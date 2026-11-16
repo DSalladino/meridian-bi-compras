@@ -1,6 +1,6 @@
 /* Importação de CSV com validação e recálculo dos indicadores. */
 import { parseCSV, esc, num, brl, dateBR, toast, download, toCSV } from "./util.js";
-import { store, addUploadedOrders, clearUploads, storedUploadsCount } from "./data.js";
+import { store, addUploadedOrders, clearUploads, storedUploadsCount, computeOtif } from "./data.js";
 
 const REQUIRED = ["id_pedido", "data_emissao", "id_fornecedor", "id_categoria", "id_item", "id_unidade", "quantidade", "valor_unitario", "valor_total", "status"];
 const STATUS = ["Entregue", "Em trânsito", "Parcial", "Atrasado", "Cancelado"];
@@ -83,7 +83,9 @@ export function validateCSV(text, filename) {
     const ref = normNum(o.preco_referencia) || item?.preco_referencia || unit;
     const received = normNum(o.qtd_recebida) || (status === "Entregue" || status === "Atrasado" ? qtd : 0);
     const defects = normNum(o.qtd_defeito) || 0;
-    const otif = status === "Entregue" && atraso === 0 && defects === 0 && received >= qtd ? 1 : 0;
+    const otif = computeOtif({
+      status, atraso_dias: atraso, qtd_recebida: received, quantidade: qtd, qtd_defeito: defects,
+    });
     const mes = data.slice(0, 7);
 
     out.push({

@@ -23,7 +23,9 @@ necessidade.
 
 1. `saving = (referência − negociado) × quantidade`; negativo indica sobrepreço e é
    reportado separadamente (11% dos pedidos na base atual).
-2. `otif = 1` apenas se `status = 'Entregue'`, `atraso_dias = 0` e `qtd_defeito = 0`.
+2. `otif = 1` apenas se `status = 'Entregue'`, `atraso_dias = 0`,
+   `qtd_recebida >= quantidade` e `qtd_defeito = 0`. No PostgreSQL a coluna é
+   `GENERATED ALWAYS`; no DAX existe `OTIF por Flag`/`Divergência OTIF` para auditoria.
 3. `qtd_recebida <= quantidade × 1,05` (tolerância de overdelivery de 5%).
 4. `qtd_defeito <= qtd_recebida`.
 5. `data_entrega_real >= data_emissao` quando existir.
@@ -37,6 +39,8 @@ necessidade.
 | Tipo | O que cobre | Como executar |
 | --- | --- | --- |
 | Reconciliação | carga × CSV (contagens, somatórios, OTIF, savings) | `python etl/pipeline_etl.py --validate-only` |
+| OTIF | flag × regra canônica (prazo, completude e qualidade) | `SELECT count(*) FROM dw.vw_otif_auditoria;` deve retornar 0 |
+| Rollback | staging + swap na mesma transação; `TRUNCATE` sem CASCADE | revisar log do pipeline e `pg_stat_activity` |
 | Estrutural | XLSX gerado é um ZIP válido, com CRCs corretos e XML esperado | inspeção do arquivo baixado |
 | Funcional (manual) | filtros, navegação, upload, exportações | checklist em `docs/checklist-qa.md`* |
 | Regressão de números | KPIs do painel × views SQL | comparação `vw_kpi_geral` |

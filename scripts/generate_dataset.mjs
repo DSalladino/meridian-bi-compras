@@ -248,7 +248,8 @@ for (const [y, m] of months) {
       receb = status === 'Parcial' ? Math.round(qty * rand(0.55, 0.9)) : qty;
       defeito = r() < 0.028 + (win.f.rating < 72 ? 0.05 : 0) ? Math.max(1, Math.round(qty * rand(0.005, 0.03))) : 0;
     }
-    const otif = status === 'Entregue' && atraso === 0 && defeito === 0 ? 1 : 0;
+    // Definição única: prazo + completude + qualidade.
+    const otif = status === 'Entregue' && atraso === 0 && receb >= qty && defeito === 0 ? 1 : 0;
     const valorTotal = win.total;
     const saving = round(qty * (refPrice - win.preco), 2);
     pedidos.push({

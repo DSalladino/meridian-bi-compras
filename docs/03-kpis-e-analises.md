@@ -62,13 +62,22 @@ round(sum(p.valor_total) / nullif(sum(o.orcamento), 0) * 100, 1)
 ### OTIF
 `entregas no prazo, completas e sem defeito ÷ entregas com data real`.
 “No prazo” = `atraso_dias = 0`; “completo” = `qtd_recebida >= quantidade`;
-“sem defeito” = `qtd_defeito = 0`. A flag é calculada na origem e reconciliada no ETL.
+“sem defeito” = `qtd_defeito = 0`. No PostgreSQL a coluna é `GENERATED ALWAYS`; no ETL,
+no DAX e no painel a mesma regra é recalculada para auditoria.
 
 ```dax
-OTIF := DIVIDE (
-    CALCULATE ( SUM ( fato_pedido[otif] ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) ),
-    [Entregas]
-)
+OTIF :=
+VAR Base =
+    FILTER (
+        fato_pedido,
+        NOT ISBLANK ( fato_pedido[data_entrega_real] )
+            && fato_pedido[status] = "Entregue"
+            && fato_pedido[atraso_dias] = 0
+            && fato_pedido[qtd_recebida] >= fato_pedido[quantidade]
+            && fato_pedido[qtd_defeito] = 0
+    )
+RETURN DIVIDE ( COUNTROWS ( Base ), [Entregas] )
+```
 ```
 
 ### Lead time e atraso
@@ -77,7 +86,8 @@ entrega real. O P90 é usado no painel porque a média esconde a cauda longa de 
 
 ### Concentração e HHI
 `share_i = spend_i ÷ spend_total`; `HHI = Σ share_i² × 10.000`.
-Referência antitruste: < 1.500 competitivo, 1.500–2.500 moderado, > 2.500 concentrado.
+Referência antitruste adotada no projeto: < 1.500 competitivo, 1.500–2.500 moderado,
+> 2.500 concentrado. A meta do painel é **< 1.500**; o README usa a mesma escala.
 
 ```dax
 HHI Fornecedores :=

@@ -16,7 +16,7 @@ exportação em Excel/PDF e upload de dados.
 | Camada | Entrega |
 | --- | --- |
 | **Dataset** | 10 arquivos CSV determinísticos em `/data` (seed fixa), geração em Node e Python |
-| **ETL** | `etl/pipeline_etl.py` (Python) e `powerbi/power-query.m` (M) com qualidade, tratamento e carga |
+| **ETL** | `etl/pipeline_etl.py` (Python) e `powerbi/power-query.m` (M) com qualidade, staging e swap transacional |
 | **SQL** | DDL do modelo estrela, views de KPI e 12 consultas analíticas prontas |
 | **DAX** | ~50 medidas documentadas (spend, savings, OTIF, HHI, score, preço, tempo) |
 | **Power BI / Power Query** | Consultas M de tratamento (`powerbi/power-query.m`), tema pastel e guia de modelo |
@@ -43,6 +43,43 @@ Requisitos: **Node 18+** para o painel (zero dependências). Para o pipeline Pyt
 http://localhost:4173/app/       painel analítico
 http://localhost:4173/app/#dados upload, dicionário e exportações
 ```
+
+---
+
+## Demonstração
+
+O painel web é a demonstração executável do projeto: abre sem build, sem CDN e sem
+credenciais. As capturas abaixo foram geradas a partir do dataset versionado, com o filtro
+padrão de 12 meses.
+
+[![Visão executiva](docs/capturas/visao-executiva.png)](docs/capturas/visao-executiva.png)
+
+| Página | Captura |
+| --- | --- |
+| Cotações & economia | [abrir](docs/capturas/cotacoes-economia.png) |
+| Fornecedores | [abrir](docs/capturas/fornecedores.png) |
+| Prazos & qualidade | [abrir](docs/capturas/prazos-qualidade.png) |
+| Preços & reajustes | [abrir](docs/capturas/precos-reajustes.png) |
+| Dados & exportação | [abrir](docs/capturas/dados-exportacao.png) |
+
+### Reproduzir em 1 minuto
+
+```bash
+npm start
+# abra http://localhost:4173/app/
+```
+
+1. **Visão executiva** — confira spend, economia, aderência, OTIF e concentração.
+2. **Dados & exportação** — alterne para **Base vazia** e veja os estados vazios.
+3. **Restaurar demo** — a base volta com 3.120 pedidos e 11.416 propostas.
+4. **Excel / Relatório PDF** — exporte os filtros ativos.
+
+### E o arquivo `.pbix`?
+
+O `.pbix` é binário e não é versionado. Em vez dele, o repositório entrega o que é
+reproduzível: DDL, Power Query M, ~50 medidas DAX, tema e um guia de reconstrução em
+[`powerbi/README.md`](powerbi/README.md). O painel web cobre a mesma narrativa analítica e
+serve como demonstração imediata para quem não tem o Power BI Desktop instalado.
 
 ---
 
@@ -89,7 +126,7 @@ preserva as dimensões e passa automaticamente para o modo de importações.
 | **Aderência ao orçamento** | spend ÷ orçamento | ≤ 100% |
 | **OTIF** | entregas no prazo, completas e sem defeito ÷ entregas | ≥ 90% |
 | **Lead time** | dias entre emissão e entrega real | por categoria |
-| **Concentração top 5 / HHI** | participação dos 5 maiores / Σ(share²) × 10.000 | HHI < 1.800 |
+| **Concentração top 5 / HHI** | participação dos 5 maiores / Σ(share²) × 10.000 | HHI < 1.500 (competitivo; 1.500–2.500 moderado, > 2.500 concentrado) |
 | **Cobertura contratual** | spend com contrato ÷ spend total | ≥ 85% |
 | **Cotações por requisição** | propostas ÷ requisições | ≥ 3 |
 | **Variação de preços 12m** | preço atual ÷ preço de 12 meses − 1, ponderado por spend | ≤ IPCA |
@@ -148,8 +185,11 @@ python etl/pipeline_etl.py --dsn postgresql://postgres:postgres@localhost:5432/m
   o grão da negociação e permitir medir spread e aderência ao menor preço.
 - **Savings sobre preço de referência**, nunca sobre “primeira cotação” — o baseline é
   auditável e estável ao longo do tempo.
-- **OTIF como flag no grão do pedido**, calculado na origem e validado no ETL (regra
-  reconcilia prazo, completude e qualidade).
+- **OTIF como flag no grão do pedido**, calculado na origem e validado no ETL (prazo,
+  completude e qualidade). No PostgreSQL a coluna é `GENERATED ALWAYS`; no painel o flag é
+  recalculado no cliente para não confiar cegamente no CSV.
+- **Carga em duas fases**: staging temporário + `TRUNCATE` explícito **sem CASCADE** e swap
+  dentro de uma transação. Falha em qualquer etapa desfaz o lote inteiro.
 - **Painel sem framework**: SVG feito à mão e XLSX OOXML gerado no navegador (sem CDN,
   sem dependências) para garantir portabilidade e um artefato que abre em qualquer máquina.
 - **Estética pastel com hierarquia funcional**: cores suaves só como codificação

@@ -62,9 +62,15 @@ check("saving consistente com baseline", pedidos.every((p) =>
   Math.abs(Number(p.saving_valor) - (Number(p.preco_referencia) - Number(p.valor_unitario)) * Number(p.quantidade)) <= 1));
 check("defeito ≤ recebido", pedidos.every((p) => Number(p.qtd_defeito) <= Number(p.qtd_recebida)));
 check("OTIF coerente", pedidos.every((p) => {
-  const ok = p.status === "Entregue" && Number(p.atraso_dias) === 0 && Number(p.qtd_defeito) === 0;
+  const ok = p.status === "Entregue" && Number(p.atraso_dias) === 0
+    && Number(p.qtd_recebida) >= Number(p.quantidade)
+    && Number(p.qtd_defeito) === 0;
   return (ok ? 1 : 0) === Number(p.otif);
 }));
+check("entrega parcial nunca é OTIF", pedidos.every((p) =>
+  !(Number(p.otif) === 1 && Number(p.qtd_recebida) < Number(p.quantidade))));
+check("existe entrega parcial na base", pedidos.some((p) =>
+  Number(p.qtd_recebida) < Number(p.quantidade)), "cobertura do teste de completude");
 
 const porReq = new Map();
 for (const c of cotacoes) porReq.set(c.id_requisicao, (porReq.get(c.id_requisicao) || 0) + Number(c.selecionada));

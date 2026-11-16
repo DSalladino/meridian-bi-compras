@@ -61,8 +61,11 @@ O repositório entrega **duas camadas de consumo** sobre o mesmo modelo semânti
 3. **Transform** — normalização de tipos, recomposição do frete a partir de
    `valor_total − quantidade × valor_unitario`, derivação de `mes_ref` e
    `saving_potencial`.
-4. **Load** — `TRUNCATE` + `execute_values` em ordem de dependência, dentro de uma
-   transação única. Falha em qualquer tabela desfaz o lote.
+4. **Load** — staging temporário (`CREATE TEMP TABLE ... ON COMMIT DROP`) + validação de
+   contagens + `TRUNCATE` explícito **sem CASCADE** + `INSERT ... SELECT` em ordem de
+   dependência, dentro de uma transação única. Falha em qualquer tabela desfaz o lote.
+   O `TRUNCATE` lista apenas as 10 tabelas do processo; uma FK externa faz a carga falhar
+   em vez de apagar objetos fora do escopo.
 5. **Report** — `etl/out/quality_report.json` com contagens, checks e timestamp UTC.
 
 ## Modelo de atualização
@@ -73,6 +76,12 @@ O repositório entrega **duas camadas de consumo** sobre o mesmo modelo semânti
   incremental por data para fatos; atualização do Power BI 30 min depois.
 - **Idempotência**: a carga trunca e reescreve; o mesmo CSV produz o mesmo resultado.
   No painel, uploads são idempotentes por `id_pedido` (substitui, não duplica).
+- **Rollback**: staging, swap e contagens ficam na mesma transação. Qualquer erro executa
+  rollback e mantém a versão anterior da camada gold intacta. Para rollback entre versões
+  de negócio, manter um `pg_dump -Fc` antes de cargas de produção e restaurar em banco
+  separado para validação.
+- **CASCADE**: o `TRUNCATE` da carga não usa CASCADE. O único `CASCADE` do repositório
+  está no `DROP TABLE` do `01_ddl.sql`, que é um setup destrutivo de reinstalação local.
 
 ## Desempenho
 

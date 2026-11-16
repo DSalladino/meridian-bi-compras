@@ -40,6 +40,7 @@ function table(headers, rows, foot = "") {
 }
 
 const badge = (text, cls = "") => `<span class="badge ${cls}">${esc(text)}</span>`;
+const hhiBand = (v) => (v == null ? "—" : v < 1500 ? "competitivo" : v <= 2500 ? "moderado" : "concentrado");
 const riskBadge = (r) => badge(r || "—", r === "Baixo" ? "mint" : r === "Médio" ? "butter" : "blush");
 const statusBadge = (s) => badge(s, s === "Entregue" ? "mint" : s === "Atrasado" ? "blush" : s === "Cancelado" ? "" : "sky");
 const tdR = (v, cls = "") => `<td class="r ${cls}">${v}</td>`;
@@ -112,7 +113,7 @@ function pageExec(c) {
     ${kpiCard({ label: "Aderência ao orçamento", value: pct(adher, 0), sub: `${brl(k.budget)} previstos`, delta: adher ? adher - 1 : null, accent: "butter", invert: true })}
     ${kpiCard({ label: "OTIF", value: pct(k.otif), sub: "meta 90% · prazo + completo", delta: k.otif - k.otifPrev, accent: "sky" })}
     ${kpiCard({ label: "Lead time médio", value: `${num(k.leadTime, 1)}<small> dias</small>`, sub: `atraso médio ${num(k.avgDelay, 1)} d`, delta: k.leadTimePrev ? k.leadTime / k.leadTimePrev - 1 : null, accent: "sage", invert: true })}
-    ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)} · ${k.suppliersCount} forn.`, accent: "blush" })}
+    ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)} (${hhiBand(k.hhi)}) · ${k.suppliersCount} forn.`, accent: "blush" })}
   </div>`;
 
   const catLegend = cats.slice(0, 8).map((cat, i) => `
@@ -167,7 +168,7 @@ function buildInsights(c) {
   if (top) out.push({ kind: "info", icon: "◎", title: `${top.nome} concentra ${pct(top.share, 0)} do spend`, text: `${brl(top.spend)} em ${top.orders} pedidos, com OTIF de ${top.otif == null ? "—" : pct(top.otif)} e lead time médio de ${num(top.lead, 1)} dias.` });
   if (k.otif < 0.9) out.push({ kind: "warn", icon: "!", title: `OTIF abaixo da meta (${pct(k.otif)})`, text: `${num(k.lateShare * 100, 0)}% dos pedidos entregues atrasaram; atraso médio de ${num(k.avgDelay, 1)} dias e P90 de ${num(k.p90Delay, 0)} dias.` });
   else out.push({ kind: "", icon: "✓", title: `OTIF dentro da meta (${pct(k.otif)})`, text: `Prazo e completude acima do alvo de 90%, com atraso médio de ${num(k.avgDelay, 1)} dias.` });
-  if (k.top5Share > 0.4) out.push({ kind: "warn", icon: "◈", title: `Risco de concentração: top 5 = ${pct(k.top5Share, 0)}`, text: `HHI de ${num(k.hhi, 0)} indica dependência relevante. Avaliar segundo fornecedor homologado por categoria crítica.` });
+  if (k.hhi > 1500 || k.top5Share > 0.4) out.push({ kind: "warn", icon: "◈", title: `Risco de concentração: top 5 = ${pct(k.top5Share, 0)}`, text: `HHI de ${num(k.hhi, 0)} (${hhiBand(k.hhi)}). Avaliar segundo fornecedor homologado por categoria crítica.` });
   if (k.savingRate < 0.06) out.push({ kind: "warn", icon: "↓", title: `Economia de ${pct(k.savingRate)} abaixo da meta`, text: `Faltam ${brl(k.spend * 0.06 - k.saving)} para atingir 6% do spend no período.` });
   const maverick = 1 - k.contractShare;
   if (maverick > 0.12) out.push({ kind: "bad", icon: "⚠", title: `${pct(maverick, 0)} do spend fora de contrato`, text: `Compras sem cobertura contratual reduzem alavancagem e previsibilidade. Priorizar catálogo e acordos vigentes.` });
@@ -282,7 +283,7 @@ function pageFornecedores(c) {
 
   const kpisHtml = `<div class="kpis">
     ${kpiCard({ label: "Fornecedores ativos", value: num(k.suppliersCount), sub: `${num(suppliers.filter((s) => s.risco === "Alto").length)} de alto risco`, accent: "lilac" })}
-    ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)}`, accent: "blush" })}
+    ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)} (${hhiBand(k.hhi)})`, accent: "blush" })}
     ${kpiCard({ label: "Rating cadastral médio", value: num(ratingAvg, 1), sub: "escala 0–100", accent: "sky" })}
     ${kpiCard({ label: "Cobertura contratual", value: pct(k.contractShare, 0), sub: "spend com contrato vigente", accent: "mint" })}
     ${kpiCard({ label: "Score médio ponderado", value: num(avg(suppliers, (s) => s.score), 1), sub: "prazo, qualidade, preço e conformidade", accent: "sage" })}

@@ -173,6 +173,31 @@ SELECT a.*,
 FROM agg a;
 
 -- ---------------------------------------------------------------------------
+-- Auditoria da regra de OTIF (deve retornar zero linhas)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW dw.vw_otif_auditoria AS
+SELECT p.id_pedido,
+       p.status,
+       p.atraso_dias,
+       p.quantidade,
+       p.qtd_recebida,
+       p.qtd_defeito,
+       p.otif,
+       CASE WHEN p.status = 'Entregue'
+             AND p.atraso_dias = 0
+             AND p.qtd_recebida >= p.quantidade
+             AND p.qtd_defeito = 0
+            THEN 1 ELSE 0 END AS otif_recalculado
+FROM dw.fato_pedido p
+WHERE p.otif IS DISTINCT FROM
+      (CASE WHEN p.status = 'Entregue'
+             AND p.atraso_dias = 0
+             AND p.qtd_recebida >= p.quantidade
+             AND p.qtd_defeito = 0
+            THEN 1 ELSE 0 END);
+COMMENT ON VIEW dw.vw_otif_auditoria IS 'Auditoria: toda linha aqui representa divergência entre o OTIF gerado e a regra canônica';
+
+-- ---------------------------------------------------------------------------
 -- Snapshot executivo (uma linha) — usado para validar o dashboard
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW dw.vw_kpi_geral AS
@@ -181,6 +206,7 @@ SELECT
     (SELECT sum(saving_valor) FROM dw.fato_pedido WHERE status <> 'Cancelado')       AS saving_total,
     (SELECT sum(orcamento) FROM dw.fato_orcamento)                                   AS orcamento_total,
     (SELECT round(avg(otif)::numeric, 4) FROM dw.fato_pedido WHERE data_entrega_real IS NOT NULL AND status <> 'Cancelado') AS otif,
+    (SELECT count(*) FROM dw.vw_otif_auditoria)                                    AS otif_divergencias,
     (SELECT round(avg(atraso_dias)::numeric, 2) FROM dw.fato_pedido WHERE data_entrega_real IS NOT NULL AND status <> 'Cancelado') AS atraso_medio,
     (SELECT count(DISTINCT id_fornecedor) FROM dw.fato_pedido WHERE status <> 'Cancelado') AS fornecedores_ativos,
     (SELECT round(sum(valor_total) FILTER (WHERE tem_contrato) / nullif(sum(valor_total), 0) * 100, 2)

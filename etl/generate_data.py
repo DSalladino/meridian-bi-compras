@@ -271,7 +271,9 @@ def main(out: Path):
                     atraso = max(0, (real - prevista).days)
                 recebido = round(qtd * RNG.uniform(0.55, 0.9)) if status == "Parcial" else qtd
                 defeito = max(1, round(qtd * RNG.uniform(0.005, 0.03))) if RNG.random() < 0.028 + (0.05 if ganhadora["fornecedor"]["rating"] < 72 else 0) else 0
-            otif = 1 if status == "Entregue" and atraso == 0 and defeito == 0 else 0
+            # Definição única: prazo + completude + qualidade.
+            otif = 1 if (status == "Entregue" and atraso == 0
+                         and recebido >= qtd and defeito == 0) else 0
             nota = min(5, max(1, round(4.3 + 0.5 * RNG.gauss(0, 1) - (0.6 if atraso > 5 else 0) - (0.7 if defeito else 0), 1)))
             pedidos.append([
                 id_po, req, d(data), f"{ano}-{mes:02d}", ganhadora["fornecedor"]["id"], item["id"], cid,

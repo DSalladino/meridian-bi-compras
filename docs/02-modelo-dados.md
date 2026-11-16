@@ -90,7 +90,7 @@ que não têm item de catálogo. A consistência é garantida por validação no
 | `data_entrega_real` | data | nulo enquanto não entregue |
 | `atraso_dias` | inteiro | `max(0, real − prevista)` |
 | `qtd_recebida` / `qtd_defeito` | decimal | base para completude e taxa de defeito |
-| `otif` | 0/1 | entregue no prazo, completo e sem defeito |
+| `otif` | 0/1 | entregue no prazo, completo e sem defeito; coluna `GENERATED ALWAYS` no PostgreSQL |
 | `status` | texto | Entregue, Em trânsito, Parcial, Atrasado, Cancelado |
 
 ## Histórico (SCD)
