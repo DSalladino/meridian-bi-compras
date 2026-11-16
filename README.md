@@ -100,6 +100,10 @@ conectar ao PostgreSQL local (`docker compose up` + ETL), salvar como `.pbix` e 
 arquivo em uma **release** do GitHub — nunca no histórico do Git. O guia traz o checklist
 completo e o passo a passo de publicação no Power BI Service.
 
+**Releases:** a tag `v*` publica automaticamente uma release com o dataset versionado em ZIP
+e o diagrama do modelo estrela (`.github/workflows/release.yml`). O `.pbix` gerado localmente
+pode ser anexado à mesma release.
+
 ---
 
 ## Testes automatizados

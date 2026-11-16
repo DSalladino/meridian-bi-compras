@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publicar release com artefatos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Empacotar dataset versionado
+        run: |
+          zip -q -r "meridian-dataset-${GITHUB_REF_NAME}.zip" data
+          ls -lh "meridian-dataset-${GITHUB_REF_NAME}.zip"
+      - name: Criar release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "meridian-dataset-${GITHUB_REF_NAME}.zip" \
+            docs/modelo-estrela.svg \
+            --title "Meridian BI ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag
