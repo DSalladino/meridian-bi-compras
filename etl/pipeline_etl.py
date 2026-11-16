@@ -202,7 +202,11 @@ def validate(frames: dict[str, pd.DataFrame], rep: Report) -> None:
 def transform(frames: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     out = {k: v.copy() for k, v in frames.items()}
     ped = out["fato_pedido"]
-    ped["tem_contrato"] = ped["tem_contrato"].astype(int)
+    # dw.fato_pedido.tem_contrato é boolean: enviar 0/1 como inteiro faz o
+    # PostgreSQL recusar com DatatypeMismatch (integer para boolean).
+    # astype(int) antes garante que "0"/"1" em texto não virem True por ser
+    # string não vazia.
+    ped["tem_contrato"] = ped["tem_contrato"].astype(int).astype(bool)
     # Recalcula a flag canônica; o PostgreSQL também a gera como STORED.
     ped["otif"] = ((ped["status"] == "Entregue")
                    & (ped["atraso_dias"] == 0)

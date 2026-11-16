@@ -48,6 +48,12 @@ class PipelineTest(unittest.TestCase):
         calc = ped["quantidade"] * ped["valor_unitario"] + ped["frete"]
         self.assertTrue(((calc - ped["valor_total"]).abs() <= 0.02).all())
 
+    def test_transform_entrega_tem_contrato_como_bool(self):
+        # Contrato do banco: dw.fato_pedido.tem_contrato é boolean.
+        # Inteiro 0/1 faz o INSERT falhar com DatatypeMismatch.
+        out = etl.transform(self.frames)
+        self.assertEqual(out["fato_pedido"]["tem_contrato"].dtype, bool)
+
     def test_filter_since_reduz_apenas_fatos(self):
         out = etl.filter_since(self.frames, "2026-01-01")
         self.assertGreater(len(self.frames["fato_pedido"]), len(out["fato_pedido"]))
