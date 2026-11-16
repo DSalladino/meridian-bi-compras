@@ -16,10 +16,10 @@ exportação em Excel/PDF e upload de dados.
 | Camada | Entrega |
 | --- | --- |
 | **Dataset** | 10 arquivos CSV determinísticos em `/data` (seed fixa), geração em Node e Python |
-| **ETL** | `etl/pipeline_etl.py` com regras de qualidade, tratamento e carga no PostgreSQL |
+| **ETL** | `etl/pipeline_etl.py` (Python) e `powerbi/power-query.m` (M) com qualidade, tratamento e carga |
 | **SQL** | DDL do modelo estrela, views de KPI e 12 consultas analíticas prontas |
 | **DAX** | ~50 medidas documentadas (spend, savings, OTIF, HHI, score, preço, tempo) |
-| **Power BI** | Tema pastel (`powerbi/tema-pastel.json`) + guia de modelo e páginas |
+| **Power BI / Power Query** | Consultas M de tratamento (`powerbi/power-query.m`), tema pastel e guia de modelo |
 | **Dashboard** | SPA em HTML/CSS/JS puro (sem build), 6 páginas, 9 tipos de gráfico, filtros globais |
 | **Relatórios** | Excel nativo (`.xlsx`, 5 abas, formatação e filtros) e PDF A4 executivo |
 | **Ingestão** | Upload de CSV com validação de schema, chaves, tipos e regras de negócio |

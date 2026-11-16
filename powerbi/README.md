@@ -17,7 +17,20 @@ Duas opções:
 1. `Obter dados → Texto/CSV`, separador `;`, codificação UTF-8.
 2. Renomeie as consultas com os nomes do modelo (`dim_fornecedor`, `fato_pedido`, ...).
 
-## 2. Relacionamentos
+## 2. Tratamento no Power Query
+
+O arquivo [`power-query.m`](power-query.m) traz consultas prontas:
+
+- `fnCarregarCSV` — leitura UTF-8, separador `;`, aspas RFC 4180;
+- `dim_calendario` — calendário 2023–2027 gerado em M;
+- `fato_pedido` — tipagem, deduplicação por `id_pedido`, `check_total` e saving recalculado;
+- `fato_cotacao` — deduplicação e `desvio_pct`/`saving_potencial`;
+- `dim_fornecedor` — normalização de nome/UF e `risco_calc`.
+
+Crie o parâmetro `CaminhoDados` apontando para a pasta `data` e cole cada bloco em
+**Editor Avançado**. Em produção, troque `File.Contents` por `PostgreSQL.Database`.
+
+## 3. Relacionamentos
 
 Crie as relações conforme `docs/02-modelo-dados.md`. Pontos de atenção:
 
@@ -26,13 +39,13 @@ Crie as relações conforme `docs/02-modelo-dados.md`. Pontos de atenção:
   nas medidas de cotação.
 - `fato_preco` e `fato_orcamento` relacionam por `ano_mes` (texto), não por data.
 
-## 3. Medidas
+## 4. Medidas
 
 Cole o conteúdo de [`../dax/medidas.dax`](../dax/medidas.dax) em uma tabela de medidas
 (`_Medidas`). As metas estão como medidas (`Meta Economia`, `OTIF Meta`) para permitir
 ajuste sem editar fórmulas.
 
-## 4. Tema
+## 5. Tema
 
 `Exibição → Temas → Procurar temas` e selecione `tema-pastel.json`.
 
@@ -43,7 +56,7 @@ O tema define:
 - tipografia Segoe UI, rótulos em `#837D90` e valores em `#2F2B3A`;
 - eixos com grade `#F1EDF6` e legendas no topo.
 
-## 5. Páginas sugeridas
+## 6. Páginas sugeridas
 
 | Página | Visuais |
 | --- | --- |
@@ -66,7 +79,7 @@ O tema define:
 - **Tooltip personalizada:** arraste `[Economia]`, `[OTIF]` e `[Cotações por Requisição]`
   para a página de tooltip.
 
-## 6. RLS sugerida
+## 7. RLS sugerida
 
 ```dax
 // Papel: Unidade
@@ -78,7 +91,7 @@ O tema define:
 
 Em um cenário real, mapeie o e-mail do usuário para `id_unidade` em uma tabela de segurança.
 
-## 7. Atualização
+## 8. Atualização
 
 - Gateway padrão para PostgreSQL on-premises.
 - Atualização agendada 05:30, após o ETL (05:00).
