@@ -306,6 +306,29 @@ def load(frames: dict[str, pd.DataFrame], dsn: str, mode: str = "full", since: s
             # Serializa cargas concorrentes sem bloquear leituras até o swap.
             cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", ("meridian.etl.load.v1",))
 
+            # Guarda de contrato: toda coluna NOT NULL sem default e sem geração
+            # automática precisa estar em cols[table]. Sem isso, uma PK IDENTITY
+            # fora da lista de carga quebra o staging com violação de NOT NULL.
+            for table in targets:
+                cur.execute(
+                    """
+                    SELECT column_name
+                      FROM information_schema.columns
+                     WHERE table_schema = 'dw'
+                       AND table_name = %s
+                       AND is_nullable = 'NO'
+                       AND column_default IS NULL
+                       AND is_identity = 'NO'
+                       AND is_generated = 'NEVER'
+                    """,
+                    (table,),
+                )
+                faltando = sorted(r[0] for r in cur.fetchall() if r[0] not in cols[table])
+                if faltando:
+                    raise RuntimeError(
+                        f"{table}: colunas NOT NULL sem default fora da carga: {', '.join(faltando)}"
+                    )
+
             # Fase 1 — staging: nada no destino é alterado ainda.
             print(f"  staging ({mode}; nenhuma tabela de destino foi alterada)")
             for table in targets:
@@ -316,7 +339,13 @@ def load(frames: dict[str, pd.DataFrame], dsn: str, mode: str = "full", since: s
                 values = [tuple(None if pd.isna(v) else (v.item() if hasattr(v, "item") else v) for v in row)
                           for row in df.itertuples(index=False, name=None)]
                 stg = f"stg_{table}"
-                cur.execute(f"CREATE TEMP TABLE {stg} (LIKE dw.{table} INCLUDING DEFAULTS) ON COMMIT DROP")
+                # INCLUDING IDENTITY é obrigatório: sem ele, uma PK IDENTITY é
+                # copiada como coluna NOT NULL sem default e o INSERT falha
+                # (era o caso de dw.fato_cotacao.id_cotacao na carga full).
+                cur.execute(
+                    f"CREATE TEMP TABLE {stg} (LIKE dw.{table} "
+                    "INCLUDING DEFAULTS INCLUDING IDENTITY) ON COMMIT DROP"
+                )
                 execute_values(
                     cur,
                     f"INSERT INTO {stg} ({', '.join(cols[table])}) VALUES %s",
