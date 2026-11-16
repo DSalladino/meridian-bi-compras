@@ -30,6 +30,8 @@ exportação em Excel/PDF e upload de dados.
 
 ```bash
 npm start          # sobe o servidor local em http://localhost:4173
+npm run check      # smoke test do dataset (integridade + KPIs de referência)
+npm run data       # regenera o dataset a partir da seed 20261116
 # ou: node server.js
 ```
 
@@ -94,7 +96,7 @@ A árvore completa de KPIs, fórmulas em SQL/DAX e decisões de definição est�
 ├── docs/                 arquitetura, modelo, KPIs, decisões e governança
 ├── etl/                  geração (Node/Python), validação e carga PostgreSQL
 ├── powerbi/              tema pastel + guia do modelo
-├── scripts/              gerador determinístico do dataset
+├── scripts/              gerador determinístico + smoke test do dataset
 ├── sql/                  DDL, views de KPI e consultas analíticas
 └── server.js             servidor estático local (porta 4173)
 ```
