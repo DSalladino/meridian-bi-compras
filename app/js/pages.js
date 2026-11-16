@@ -15,10 +15,10 @@ export const ui = { ctx: null, supplier: null, item: null, page: "exec" };
 /* ------------------------------- helpers --------------------------------- */
 const ACCENTS = ["mint", "lilac", "blush", "butter", "sky", "sage"];
 
-function kpiCard({ label, value, sub = "", delta = null, accent = "mint", foot = "" }) {
+function kpiCard({ label, value, sub = "", delta = null, accent = "mint", foot = "", invert = false, neutral = false }) {
   const dir = delta == null ? null : delta > 0.0005 ? "up" : delta < -0.0005 ? "down" : "flat";
-  const dcls = dir === "down" ? "down" : dir === "flat" ? "flat" : "";
-  const dTxt = delta == null ? "" : `<span class="delta ${dcls}">${delta >= 0 ? "▲" : "▼"} ${pct(Math.abs(delta))}</span>`;
+  const good = neutral || dir === "flat" ? "flat" : (dir === "up") !== invert ? "" : "down";
+  const dTxt = delta == null ? "" : `<span class="delta ${good}">${delta >= 0 ? "▲" : "▼"} ${pct(Math.abs(delta))}</span>`;
   return `<div class="kpi" data-accent="${accent}">
     <div class="kpi-label">${esc(label)}</div>
     <div class="kpi-value">${value}</div>
@@ -86,11 +86,11 @@ function pageExec(c) {
   const savingRateSeries = c.monthly.map((m) => (m.valor ? m.saving / m.valor : 0));
 
   const kpisHtml = `<div class="kpis">
-    ${kpiCard({ label: "Spend no período", value: brl(k.spend), sub: `${num(k.orders)} pedidos`, delta: deltaSpend, accent: "lilac" })}
+    ${kpiCard({ label: "Spend no período", value: brl(k.spend), sub: `${num(k.orders)} pedidos`, delta: deltaSpend, accent: "lilac", neutral: true })}
     ${kpiCard({ label: "Economia obtida", value: brl(k.saving), sub: `${pct(k.savingRate)} do spend · meta 6%`, delta: k.savingDelta, accent: "mint" })}
-    ${kpiCard({ label: "Aderência ao orçamento", value: pct(adher, 0), sub: `${brl(k.budget)} previstos`, delta: adher ? adher - 1 : null, accent: "butter" })}
+    ${kpiCard({ label: "Aderência ao orçamento", value: pct(adher, 0), sub: `${brl(k.budget)} previstos`, delta: adher ? adher - 1 : null, accent: "butter", invert: true })}
     ${kpiCard({ label: "OTIF", value: pct(k.otif), sub: "meta 90% · prazo + completo", delta: k.otif - k.otifPrev, accent: "sky" })}
-    ${kpiCard({ label: "Lead time médio", value: `${num(k.leadTime, 1)}<small> dias</small>`, sub: `atraso médio ${num(k.avgDelay, 1)} d`, delta: k.leadTimePrev ? k.leadTime / k.leadTimePrev - 1 : null, accent: "sage" })}
+    ${kpiCard({ label: "Lead time médio", value: `${num(k.leadTime, 1)}<small> dias</small>`, sub: `atraso médio ${num(k.avgDelay, 1)} d`, delta: k.leadTimePrev ? k.leadTime / k.leadTimePrev - 1 : null, accent: "sage", invert: true })}
     ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)} · ${k.suppliersCount} forn.`, accent: "blush" })}
   </div>`;
 
@@ -367,7 +367,7 @@ function pagePrazos(c) {
     ${kpiCard({ label: "OTIF", value: pct(k.otif), sub: "meta 90%", delta: k.otif - k.otifPrev, accent: "mint" })}
     ${kpiCard({ label: "Entregas atrasadas", value: pct(k.lateShare), sub: `${num(del.filter((p) => (p.atraso_dias || 0) > 0).length)} de ${num(del.length)} entregas`, accent: "blush" })}
     ${kpiCard({ label: "Atraso médio", value: `${num(k.avgDelay, 1)}<small> dias</small>`, sub: `P90 de ${num(k.p90Delay, 1)} dias`, accent: "butter" })}
-    ${kpiCard({ label: "Lead time médio", value: `${num(k.leadTime, 1)}<small> dias</small>`, sub: "emissão → entrega real", delta: k.leadTimePrev ? k.leadTime / k.leadTimePrev - 1 : null, accent: "sky" })}
+    ${kpiCard({ label: "Lead time médio", value: `${num(k.leadTime, 1)}<small> dias</small>`, sub: "emissão → entrega real", delta: k.leadTimePrev ? k.leadTime / k.leadTimePrev - 1 : null, accent: "sky", invert: true })}
     ${kpiCard({ label: "Taxa de defeito", value: pct(k.defectRate, 2), sub: "sobre volume recebido", accent: "lilac" })}
     ${kpiCard({ label: "Pedidos em aberto", value: num(k.openCount), sub: `${brl(k.openValue)} expostos`, accent: "sage" })}
   </div>`;

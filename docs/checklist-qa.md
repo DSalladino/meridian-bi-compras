@@ -6,7 +6,7 @@ Roteiro rápido de validação antes de publicar uma alteração.
 
 - [ ] `npm run data` roda sem erro e mantém as contagens (3.120 pedidos, 11.416 propostas).
 - [ ] `python etl/pipeline_etl.py --validate-only` retorna 0 erros.
-- [ ] Spend total ≈ R$ 78,9 mi; economia ≈ R$ 6,7 mi (~8,5%); OTIF ≈ 81%.
+- [ ] Spend total ≈ R$ 78,9 mi; economia ≈ R$ 6,7 mi (~8,5%); OTIF ≈ 79%.
 - [ ] `vw_kpi_geral` concorda com os cartões da Visão executiva (tolerância de arredondamento).
 - [ ] Nenhum item/fornecedor aparece como `undefined` ou `NaN` nas tabelas.
 

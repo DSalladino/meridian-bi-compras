@@ -109,7 +109,7 @@ O gerador (`scripts/generate_dataset.mjs`, espelhado em `etl/generate_data.py`) 
 - **inflação por categoria** (aço +0,55%/mês, TI +0,18%/mês) refletida no preço de referência;
 - **competitividade por fornecedor** (fator log-normal) e 12% de decisões que não escolhem
   o menor preço — qualidade e relacionamento também pesam;
-- **execução realista**: 81% de OTIF, atraso correlacionado ao rating, defeitos raros,
+- **execução realista**: 79% de OTIF, atraso correlacionado ao rating, defeitos raros,
   pedidos em trânsito/parciais nos meses recentes;
 - **orçamento** derivado do realizado com desvio controlado, permitindo estouros localizados;
 - **contratos** com vigência, reajuste e índice, e ~34% de compras fora de contrato.

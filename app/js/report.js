@@ -1,7 +1,7 @@
 /* Relatório executivo (PDF via impressão), Excel (XLSX nativo) e CSV. */
 import { brl, brlFull, num, pct, signedPct, monthLabel, dateBR, esc, PALETTE, nowStamp, download, toCSV } from "./util.js";
 import { store, delivered, validSpend } from "./data.js";
-import { lineChart, hbar, donut } from "./charts.js";
+import { lineChart, donut } from "./charts.js";
 import { buildXLSX } from "./xlsx.js";
 
 function filterSummary(c) {
@@ -133,19 +133,25 @@ export function exportPDF(c) {
     </div>
 
     <div class="r-section">1. Spend, orçamento e economia</div>
-    <div class="r-grid">
-      <div class="r-box"><h3>Realizado vs. orçamento (mensal)</h3>
-        ${lineChart({ labels: c.months, series: [
-          { name: "Realizado", color: PALETTE.lilac, values: c.spendSeries },
-          { name: "Orçamento", color: PALETTE.mint, values: c.budgetM, dashed: true },
-        ], height: 210 })}</div>
+    <div class="r-box"><h3>Realizado vs. orçamento (mensal)</h3>
+      ${lineChart({ labels: c.months, series: [
+        { name: "Realizado", color: PALETTE.lilac, values: c.spendSeries },
+        { name: "Orçamento", color: PALETTE.mint, values: c.budgetM, dashed: true },
+      ], height: 190 })}</div>
+    <div class="r-grid" style="margin-top:10px">
       <div class="r-box"><h3>Spend por categoria</h3>
-        <div style="display:flex;gap:8px;align-items:center">
-          ${donut({ items: c.cats.slice(0, 7).map((x, i) => ({ label: x.nome, value: x.spend, color: [PALETTE.mint, PALETTE.lilac, PALETTE.blush, PALETTE.butter, PALETTE.sky, PALETTE.rose, PALETTE.sage][i] })), center: { value: brl(k.spend), label: "spend" }, size: 150, thickness: 18 })}
-          <div style="flex:1;font-size:8pt;line-height:1.7">
-            ${c.cats.slice(0, 7).map((x, i) => `<div style="display:flex;gap:5px"><span style="width:6px;height:6px;border-radius:2px;margin-top:4px;background:${[PALETTE.mint, PALETTE.lilac, PALETTE.blush, PALETTE.butter, PALETTE.sky, PALETTE.rose, PALETTE.sage][i]}"></span><span style="flex:1">${esc(x.nome)}</span><strong>${brl(x.spend)}</strong><span style="color:#7d7689">${pct(x.share)}</span></div>`).join("")}
+        <div style="display:flex;gap:6px;align-items:center">
+          ${donut({ items: c.cats.slice(0, 7).map((x, i) => ({ label: x.nome, value: x.spend, color: [PALETTE.mint, PALETTE.lilac, PALETTE.blush, PALETTE.butter, PALETTE.sky, PALETTE.rose, PALETTE.sage][i] })), center: { value: brl(k.spend), label: "spend" }, size: 132, thickness: 17 })}
+          <div style="flex:1;font-size:7.5pt;line-height:1.6">
+            ${c.cats.slice(0, 7).map((x, i) => `<div style="display:flex;gap:4px"><span style="width:5px;height:5px;border-radius:2px;margin-top:4px;background:${[PALETTE.mint, PALETTE.lilac, PALETTE.blush, PALETTE.butter, PALETTE.sky, PALETTE.rose, PALETTE.sage][i]}"></span><span style="flex:1">${esc(x.nome)}</span><span style="color:#7d7689">${pct(x.share)}</span></div>`).join("")}
           </div>
         </div>
+      </div>
+      <div class="r-box"><h3>Economia por categoria</h3>
+        <table class="r-table">
+          <thead><tr><th>Categoria</th><th class="r">Spend</th><th class="r">Economia</th><th class="r">%</th></tr></thead>
+          <tbody>${c.cats.slice(0, 6).map((x) => `<tr><td>${esc(x.nome)}</td><td class="r">${brl(x.spend)}</td><td class="r">${brl(x.saving)}</td><td class="r">${pct(x.savingRate)}</td></tr>`).join("")}</tbody>
+        </table>
       </div>
     </div>
 
@@ -164,23 +170,21 @@ export function exportPDF(c) {
     </div>
 
     <div class="r-section">3. Prazos e qualidade</div>
-    <div class="r-grid">
-      <div class="r-box"><h3>OTIF mensal vs. meta de 90%</h3>
-        ${lineChart({ labels: c.months, series: [{ name: "OTIF", color: PALETTE.mint, values: c.months.map((m) => { const rows = c.pedidos.filter((p) => delivered(p) && p.mes === m); return rows.length ? rows.reduce((s, p) => s + p.otif, 0) / rows.length : null; }) }], height: 200, yFmt: (v) => pct(v, 0), target: { value: 0.9, label: "meta" }, yMax: 1 })}</div>
-      <div class="r-box"><h3>Fornecedores com pior OTIF</h3>
-        ${hbar({ items: worst.map((s) => ({ label: s.nome, value: s.otif, display: pct(s.otif), color: PALETTE.blush })), fmt: (v) => pct(v), labelWidth: 190, showValue: true })}
-      </div>
-    </div>
+    <div class="r-box"><h3>OTIF mensal vs. meta de 90%</h3>
+      ${lineChart({ labels: c.months, series: [{ name: "OTIF", color: PALETTE.mint, values: c.months.map((m) => { const rows = c.pedidos.filter((p) => delivered(p) && p.mes === m); return rows.length ? rows.reduce((s, p) => s + p.otif, 0) / rows.length : null; }) }], height: 180, yFmt: (v) => pct(v, 0), target: { value: 0.9, label: "meta" }, yMax: 1 })}</div>
     <div class="r-grid" style="margin-top:10px">
-      <div class="r-box"><h3>Economia por categoria</h3>
-        ${hbar({ items: c.cats.slice(0, 6).map((x) => ({ label: x.nome, value: x.saving, color: PALETTE.mint })), labelWidth: 150 })}
+      <div class="r-box"><h3>Fornecedores com pior OTIF</h3>
+        <table class="r-table">
+          <thead><tr><th>Fornecedor</th><th class="r">OTIF</th><th class="r">Atraso</th><th class="r">Spend</th></tr></thead>
+          <tbody>${worst.map((s) => `<tr><td>${esc(s.nome)}</td><td class="r">${pct(s.otif)}</td><td class="r">${num(s.delay, 1)} d</td><td class="r">${brl(s.spend)}</td></tr>`).join("")}</tbody>
+        </table>
       </div>
       <div class="r-box"><h3>Variação de preços em 12 meses</h3>
         <table class="r-table">
           <thead><tr><th>Categoria</th><th class="r">Variação</th><th class="r">Spend</th></tr></thead>
           <tbody>${obs.map((x) => `<tr><td>${esc(x.nome)}</td><td class="r">${signedPct(x.variacao)}</td><td class="r">${brl(x.spend)}</td></tr>`).join("")}</tbody>
         </table>
-        <p class="r-note" style="margin-top:6px">Variação ponderada pelo spend dos itens da categoria, acumulada nos últimos 12 meses da base. Inflação média do portfólio: <strong>${signedPct(c.prices.variacaoGeral)}</strong>.</p>
+        <p class="r-note" style="margin-top:6px">Inflação média ponderada do portfólio: <strong>${signedPct(c.prices.variacaoGeral)}</strong> em 12 meses.</p>
       </div>
     </div>
 
