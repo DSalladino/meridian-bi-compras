@@ -8,7 +8,7 @@
 | Unicidade | PKs de dimensões e fatos, propostas duplicadas | erro |
 | Integridade referencial | fornecedor/item/categoria/unidade existentes | erro |
 | Domínio | status permitidos, OTIF binário, criticidade | erro |
-| Consistência | entrega ≥ emissão, total ≈ quantidade × preço, saving ≥ 0 | erro / aviso |
+| Consistência | entrega ≥ emissão, total ≈ quantidade × preço, saving reconciliado com o baseline (pode ser negativo) | erro / aviso |
 | Acurácia de regra | OTIF coerente com prazo/completude/qualidade | aviso |
 | Atualidade | competência mais recente ≥ mês corrente | aviso |
 | Volume | mínimo de pedidos e de propostas | aviso |
@@ -38,13 +38,21 @@ necessidade.
 
 | Tipo | O que cobre | Como executar |
 | --- | --- | --- |
-| Reconciliação | carga × CSV (contagens, somatórios, OTIF, savings) | `python etl/pipeline_etl.py --validate-only` |
-| OTIF | flag × regra canônica (prazo, completude e qualidade) | `SELECT count(*) FROM dw.vw_otif_auditoria;` deve retornar 0 |
-| Rollback | staging + swap na mesma transação; `TRUNCATE` sem CASCADE | revisar log do pipeline e `pg_stat_activity` |
-| Estrutural | XLSX gerado é um ZIP válido, com CRCs corretos e XML esperado | inspeção do arquivo baixado |
+| KPI unitário | OTIF, savings, HHI, score com pilares ausentes, contratos, previsão, simulação | `npm test` |
+| Dataset | integridade, PK/FK, OTIF, KPIs de referência | `npm run check` |
+| Paridade do painel | `kpis()`/`supplierScorecards()` × `app/js/kpi.js` | `npm test` |
+| Upload | schema, FK, duplicidade, saving negativo, OTIF derivado | `npm test` |
+| Exportação | ZIP/XLSX válido, CRC, XML e escaping de CSV | `npm test` |
+| ETL | validação, transformação, frete, saving negativo, recorte incremental | `npm run test:etl` |
+| Reconciliação SQL | carga × CSV, `vw_kpi_geral`, carteira contratual, checklist | `npm run test:sql` |
+| OTIF no banco | flag × regra canônica | `SELECT count(*) FROM dw.vw_otif_auditoria;` deve retornar 0 |
+| Rollback | staging + swap na mesma transação; `TRUNCATE` sem CASCADE | log do pipeline e `pg_stat_activity` |
 | Funcional (manual) | filtros, navegação, upload, exportações | checklist em `docs/checklist-qa.md`* |
-| Regressão de números | KPIs do painel × views SQL | comparação `vw_kpi_geral` |
 | Responsividade | 390 px, 768 px, 1280 px, 1600 px | DevTools |
+
+O CI executa as três suítes e um PostgreSQL 16 real (`.github/workflows/ci.yml`). A carga
+incremental é testada com `--mode incremental --since 2026-09-01`, seguida da validação do
+`dw.etl_run_log` e do `dw.vw_integridade_checklist`.
 
 \* checklist curto mantido junto do README de QA interno.
 
@@ -59,6 +67,8 @@ Cada KPI tem **dono**, **definição versionada** e **regra de aceite**:
 | OTIF | Logística / Suprimentos | `fato_pedido` | SLA contratual |
 | Orçamento | FP&A | `fato_orcamento` | aprovação mensal |
 | Score de fornecedor | Compliance / Compras | modelo interno | revisão semestral dos pesos |
+| Carteira contratual | Jurídico / Suprimentos | `dim_contrato` + `fato_pedido` | revisão mensal de vencimentos e reajustes |
+| Previsão de spend | FP&A / Suprimentos | `fato_pedido` | acurácia acompanhada mensalmente |
 
 Mudança de definição exige: nova versão do indicador, nota no changelog, reprocessamento do
 histórico e comunicação aos consumidores. Nunca se altera a fórmula “no lugar”.
@@ -90,8 +100,14 @@ histórico e comunicação aos consumidores. Nunca se altera a fórmula “no lu
 
 ## Limitações conhecidas
 
-- Não há integração com ERP real: a camada raw é CSV.
+- Não há integração com ERP real: a camada raw é CSV. A conexão PostgreSQL → Power BI já
+  está disponível para a camada gold.
 - O upload do painel é local (não persiste em banco).
 - O calendário não marca feriados móveis (apenas fim de semana).
 - Não há SCD tipo 2 nas dimensões; o histórico é preservado no fato.
-- A carga é full refresh — adequada ao volume atual, não a dezenas de milhões de linhas.
+- O modo `full` continua sendo o padrão; o modo incremental faz upsert por chave natural e
+  não detecta exclusões na origem (necessário CDC ou marcação lógica).
+- A previsão é uma tendência linear, sem sazonalidade; a simulação de renegociação é
+  determinística e não modela elasticidade de demanda.
+- Contratos sobrepostos podem atribuir o mesmo pedido a mais de um contrato enquanto o
+  `id_contrato` não for persistido no fato.

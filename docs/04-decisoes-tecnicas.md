@@ -158,10 +158,44 @@ pipeline — o painel web funciona sem ele, por desenho.
 
 ---
 
+## ADR-12 · Regras de KPI em módulo puro e testável
+
+**Contexto:** as mesmas regras apareciam em JavaScript, SQL, DAX e Power Query; pequenas
+diferenças (cancelados no savings, cotações sem vencedora, fornecedor sem entrega) geravam
+divergências difíceis de detectar.
+
+**Decisão:** `app/js/kpi.js` concentra OTIF, score, HHI, contratos, previsão e simulação.
+O painel importa essas funções; SQL/DAX replicam a mesma definição; testes Node, Python e
+PostgreSQL verificam a paridade.
+
+**Consequência:** mudar uma regra exige atualizar o módulo, as fontes SQL/DAX e os testes.
+O CI bloqueia divergências de `vw_kpi_geral` e da carteira contratual. Custo: uma camada a
+mais para manter; benefício: governança real do indicador.
+
+---
+
+## ADR-13 · Score sem histórico artificial e contratos por vigência
+
+**Contexto:** fornecedores novos não tinham entregas ou propostas vencedoras e recebiam
+score 0 (SQL/painel) ou blank (DAX). Contratos expirados com pedidos em aberto não apareciam
+como risco.
+
+**Decisão:** pilares ausentes são excluídos, os pesos restantes renormalizados e o score só
+é publicado com 3+ pilares. A carteira contratual deriva situação, saldo, execução e
+exposição por fornecedor + categoria + vigência, com alerta crítico para vencido com pedido
+ativo.
+
+**Consequência:** comparabilidade honesta entre fornecedores e visão de risco contratual.
+Enquanto `id_contrato` não for persistido no fato, contratos sobrepostos podem atribuir o
+mesmo pedido a mais de um contrato.
+
+---
+
 ## Convenções
 
 - Commits no padrão `tipo(escopo): descrição` (`feat(kpi): adiciona HHI por categoria`).
 - Versionamento semântico do dataset (`data/VERSION` conceitual: mudança de schema = major).
-- Toda medida nova entra em `dax/medidas.dax` com comentário e, se possível, view
-  equivalente em `sql/02_views_kpi.sql` — o dashboard e o Power BI devem concordar.
+- Toda medida nova entra em `dax/medidas.dax` com comentário e view equivalente em
+  `sql/02_views_kpi.sql`; a regra canônica vai para `app/js/kpi.js` e para os testes.
 - Nada de número “mágico” no front: metas vivem em constantes documentadas (`0.06`, `0.90`).
+- Alteração de definição de KPI exige: versão, changelog, reprocessamento e reconciliação no CI.

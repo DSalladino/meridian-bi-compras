@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="820" viewBox="0 0 1240 820" role="img" aria-labelledby="title desc">
+  <title id="title">Modelo estrela do Meridian BI — Compras</title>
+  <desc id="desc">Diagrama com fato_pedido ao centro, dimensões calendário, fornecedor, categoria, item, comprador, unidade e contrato; fatos satélites de cotação, preço e orçamento.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8d879b"/>
+    </marker>
+    <style>
+      .bg { fill:#f7f5f0; }
+      .dim { fill:#ffffff; stroke:#cfc8dd; stroke-width:1.5; }
+      .fact { fill:#3a3446; stroke:#3a3446; stroke-width:1.5; }
+      .sat { fill:#f3eff8; stroke:#cfc8dd; stroke-width:1.5; }
+      .title { font: 700 17px 'Segoe UI', Arial, sans-serif; fill:#2f2b3a; }
+      .sub { font: 12px 'Segoe UI', Arial, sans-serif; fill:#6b6478; }
+      .fact-title { font: 700 16px 'Segoe UI', Arial, sans-serif; fill:#ffffff; }
+      .fact-sub { font: 11px 'Segoe UI', Arial, sans-serif; fill:#ded8ec; }
+      .col { font: 11px 'Segoe UI', Arial, sans-serif; fill:#7d7689; }
+      .label { font: 10.5px 'Segoe UI', Arial, sans-serif; fill:#6b6478; }
+      .line { stroke:#b9b2c9; stroke-width:1.4; fill:none; marker-end:url(#arrow); }
+      .line-dash { stroke:#b9b2c9; stroke-width:1.3; fill:none; stroke-dasharray:5 4; marker-end:url(#arrow); }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1240" height="820" rx="18"/>
+  <text x="40" y="46" class="title">Meridian BI · modelo estrela de compras</text>
+  <text x="40" y="68" class="sub">Grão do pedido: 1 linha por item/fornecedor/unidade · fatos satélites preservam cotação, preço e orçamento</text>
+
+  <!-- dimensões -->
+  <g>
+    <rect class="dim" x="470" y="100" width="250" height="70" rx="12"/>
+    <text x="595" y="126" text-anchor="middle" class="title" style="font-size:14px">dim_calendario</text>
+    <text x="595" y="149" text-anchor="middle" class="sub">data · ano_mes · dia útil</text>
+  </g>
+  <g>
+    <rect class="dim" x="90" y="205" width="250" height="86" rx="12"/>
+    <text x="215" y="232" text-anchor="middle" class="title" style="font-size:14px">dim_fornecedor</text>
+    <text x="215" y="254" text-anchor="middle" class="sub">risco · rating · UF · lead time</text>
+    <text x="215" y="272" text-anchor="middle" class="sub">prazo de pagamento · porte</text>
+  </g>
+  <g>
+    <rect class="dim" x="850" y="205" width="250" height="86" rx="12"/>
+    <text x="975" y="232" text-anchor="middle" class="title" style="font-size:14px">dim_categoria</text>
+    <text x="975" y="254" text-anchor="middle" class="sub">grupo · criticidade</text>
+    <text x="975" y="272" text-anchor="middle" class="sub">drift mensal · peso de spend</text>
+  </g>
+  <g>
+    <rect class="dim" x="90" y="390" width="250" height="86" rx="12"/>
+    <text x="215" y="417" text-anchor="middle" class="title" style="font-size:14px">dim_item</text>
+    <text x="215" y="439" text-anchor="middle" class="sub">descrição · unidade</text>
+    <text x="215" y="457" text-anchor="middle" class="sub">preço de referência</text>
+  </g>
+  <g>
+    <rect class="dim" x="850" y="390" width="250" height="86" rx="12"/>
+    <text x="975" y="417" text-anchor="middle" class="title" style="font-size:14px">dim_comprador</text>
+    <text x="975" y="439" text-anchor="middle" class="sub">comprador · unidade</text>
+    <text x="975" y="457" text-anchor="middle" class="sub">categoria responsável</text>
+  </g>
+  <g>
+    <rect class="dim" x="470" y="560" width="250" height="70" rx="12"/>
+    <text x="595" y="586" text-anchor="middle" class="title" style="font-size:14px">dim_unidade</text>
+    <text x="595" y="609" text-anchor="middle" class="sub">unidade · cidade · UF · tipo</text>
+  </g>
+
+  <!-- contrato (dimensão de ligação por fornecedor/categoria) -->
+  <g>
+    <rect class="dim" x="90" y="560" width="250" height="98" rx="12" style="stroke:#a99bd6"/>
+    <text x="215" y="587" text-anchor="middle" class="title" style="font-size:14px">dim_contrato</text>
+    <text x="215" y="609" text-anchor="middle" class="sub">vigência · valor anual</text>
+    <text x="215" y="627" text-anchor="middle" class="sub">reajuste · índice · status</text>
+    <text x="215" y="645" text-anchor="middle" class="label">liga por fornecedor + categoria</text>
+  </g>
+
+  <!-- fato central -->
+  <g>
+    <rect class="fact" x="452" y="282" width="286" height="178" rx="14"/>
+    <text x="595" y="314" text-anchor="middle" class="fact-title">fato_pedido</text>
+    <text x="595" y="338" text-anchor="middle" class="fact-sub">grão: pedido de compra</text>
+    <text x="595" y="362" text-anchor="middle" class="fact-sub">valor_total · saving_valor</text>
+    <text x="595" y="382" text-anchor="middle" class="fact-sub">otif (GENERATED) · atraso_dias</text>
+    <text x="595" y="402" text-anchor="middle" class="fact-sub">qtd_recebida · qtd_defeito</text>
+    <text x="595" y="426" text-anchor="middle" class="fact-sub">tem_contrato · modalidade</text>
+    <text x="595" y="448" text-anchor="middle" class="label" style="fill:#cfc8dd">status não cancelado = spend</text>
+  </g>
+
+  <!-- fatos satélites -->
+  <g>
+    <rect class="sat" x="90" y="700" width="320" height="82" rx="12"/>
+    <text x="250" y="726" text-anchor="middle" class="title" style="font-size:14px">fato_cotacao</text>
+    <text x="250" y="748" text-anchor="middle" class="sub">proposta por requisição/fornecedor</text>
+    <text x="250" y="766" text-anchor="middle" class="sub">selecionada · spread · competitividade</text>
+  </g>
+  <g>
+    <rect class="sat" x="460" y="700" width="270" height="82" rx="12"/>
+    <text x="595" y="726" text-anchor="middle" class="title" style="font-size:14px">fato_preco</text>
+    <text x="595" y="748" text-anchor="middle" class="sub">item/mês · preço médio</text>
+    <text x="595" y="766" text-anchor="middle" class="sub">índice · variação m/m</text>
+  </g>
+  <g>
+    <rect class="sat" x="790" y="700" width="310" height="82" rx="12"/>
+    <text x="945" y="726" text-anchor="middle" class="title" style="font-size:14px">fato_orcamento</text>
+    <text x="945" y="748" text-anchor="middle" class="sub">mês/categoria/unidade</text>
+    <text x="945" y="766" text-anchor="middle" class="sub">orçamento · forecast</text>
+  </g>
+
+  <!-- linhas -->
+  <path class="line" d="M595 170 L595 282"/>
+  <path class="line" d="M340 248 C400 248 420 300 452 320"/>
+  <path class="line" d="M850 248 C790 248 770 300 738 320"/>
+  <path class="line" d="M340 433 C400 433 420 400 452 380"/>
+  <path class="line" d="M850 433 C790 433 770 400 738 380"/>
+  <path class="line" d="M595 560 L595 460"/>
+  <path class="line-dash" d="M340 610 C390 610 430 520 452 440"/>
+
+  <!-- labels das linhas -->
+  <text x="605" y="215" class="label">data_emissao</text>
+  <text x="350" y="286" class="label">id_fornecedor</text>
+  <text x="760" y="286" class="label">id_categoria</text>
+  <text x="355" y="405" class="label">id_item</text>
+  <text x="760" y="405" class="label">id_comprador</text>
+  <text x="605" y="520" class="label">id_unidade</text>
+  <text x="345" y="530" class="label">fornecedor + categoria</text>
+
+  <!-- rodapé -->
+  <g>
+    <rect x="850" y="560" width="300" height="98" rx="12" fill="#ffffff" stroke="#e4dfeb"/>
+    <text x="870" y="586" class="col" style="font-weight:700;fill:#2f2b3a">Como ler</text>
+    <text x="870" y="607" class="col">• linhas cheias = relações ativas</text>
+    <text x="870" y="625" class="col">• linha tracejada = contrato por vigência</text>
+    <text x="870" y="643" class="col">• fatos satélites não duplicam o grão</text>
+  </g>
+</svg>

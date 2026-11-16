@@ -66,9 +66,14 @@ let
     Deriva = Table.AddColumn(SemCancelados, "mes_ref_calc", each Date.ToText([data_emissao], "yyyy-MM"), type text),
     Consistente = Table.AddColumn(Deriva, "check_total", each
         Number.Abs([valor_total] - ([quantidade] * [valor_unitario] + [frete])) < 0.05, type logical),
+    // Economia pode ser negativa quando o preço negociado supera a referência.
+    // Não aplicar Number.Max(0, ...): isso divergia do SQL, do DAX e do painel.
     Saving = Table.AddColumn(Consistente, "saving_calc",
-        each Number.Max(0, ([preco_referencia] - [valor_unitario]) * [quantidade]), type number),
-    Renomeia = Table.RenameColumns(Saving, {{"mes_ref_calc", "mes_calc"}})
+        each ([preco_referencia] - [valor_unitario]) * [quantidade], type number),
+    // mes_ref é derivado da data de emissão: descarta o valor do CSV para
+    // garantir a mesma competência usada pelo painel e pelas views SQL.
+    SemMesOriginal = Table.RemoveColumns(Saving, {"mes_ref"}),
+    Renomeia = Table.RenameColumns(SemMesOriginal, {{"mes_ref_calc", "mes_ref"}})
 in
     Renomeia
 
@@ -121,3 +126,44 @@ in
 //   Table.RowCount(fato_pedido) >= 3000
 //   Table.IsDistinct(fato_pedido, {"id_pedido"}) = true
 //   Table.FindText(fato_pedido, "null") = false
+
+// -----------------------------------------------------------------------------
+// INTEGRAÇÃO REAL POSTGRESQL → POWER BI
+// Parâmetros (Home → Gerenciar Parâmetros):
+//   ServidorPostgres = localhost:5432
+//   BancoPostgres    = meridian
+//   EsquemaPostgres  = dw
+// Use uma conta somente leitura; nunca embuta senha no arquivo. Em produção,
+// configure o gateway e credenciais no Power BI Service.
+// -----------------------------------------------------------------------------
+// Consulta: fato_pedido_postgres
+let
+    Fonte = PostgreSQL.Database(ServidorPostgres, BancoPostgres),
+    Esquema = Fonte{[Schema = EsquemaPostgres]}[Data],
+    Pedidos = Esquema{[Item = "fato_pedido", Kind = "Table"]}[Data],
+    Tipos = Table.TransformColumnTypes(Pedidos, {
+        {"data_emissao", type date}, {"data_entrega_prevista", type date}, {"data_entrega_real", type date},
+        {"tem_contrato", type logical}
+    })
+in
+    Tipos
+
+// Consulta: dim_contrato_postgres
+let
+    Fonte = PostgreSQL.Database(ServidorPostgres, BancoPostgres),
+    Esquema = Fonte{[Schema = EsquemaPostgres]}[Data],
+    Contratos = Esquema{[Item = "dim_contrato", Kind = "Table"]}[Data],
+    Tipos = Table.TransformColumnTypes(Contratos, {
+        {"data_inicio", type date}, {"data_fim", type date},
+        {"valor_anual", type number}, {"reajuste_pct", type number}
+    })
+in
+    Tipos
+
+// Consulta: vw_kpi_geral_postgres — reconciliação oficial do dashboard
+let
+    Fonte = PostgreSQL.Database(ServidorPostgres, BancoPostgres),
+    Esquema = Fonte{[Schema = EsquemaPostgres]}[Data],
+    Kpis = Esquema{[Item = "vw_kpi_geral", Kind = "View"]}[Data]
+in
+    Kpis

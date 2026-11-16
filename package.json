@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node server.js",
     "data": "node scripts/generate_dataset.mjs",
-    "check": "node scripts/smoke_test.mjs"
+    "check": "node scripts/smoke_test.mjs",
+    "test": "node --test tests/kpi.test.mjs tests/parity.test.mjs tests/upload.test.mjs tests/xlsx.test.mjs tests/render.test.mjs",
+    "test:sql": "node scripts/verify_sql_kpis.mjs",
+    "test:etl": "python -m unittest discover -s etl -p \"test_*.py\" -v"
   },
   "engines": { "node": ">=18" },
   "keywords": ["business-intelligence", "power-bi", "purchasing", "procurement", "dax", "postgresql", "etl"],

@@ -11,6 +11,7 @@ const PAGES = {
   fornecedores: ["Fornecedores", "Scorecard, risco e concentração de fornecimento"],
   prazos: ["Prazos & qualidade", "OTIF, lead time e confiabilidade das entregas"],
   precos: ["Preços & reajustes", "Índices, variações e exposição a reajustes"],
+  contratos: ["Contratos & riscos", "Vigências, saldo contratual, reajustes e exposição"],
   dados: ["Dados & exportação", "Ingestão, qualidade, dicionário e relatórios"],
 };
 

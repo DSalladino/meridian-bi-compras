@@ -1,5 +1,9 @@
 /* Camada semântica: carga do dataset, filtros e agregações do modelo estrela. */
-import { parseCSV, sum, avg, groupBy, hhi, clamp, quantile, weightedAvg } from "./util.js";
+import { parseCSV, sum, avg, groupBy, quantile, weightedAvg } from "./util.js";
+import {
+  computeOtif, isDelivered, isValidSpend, supplierScore, supplierClassification, hhi,
+  contractPortfolio, daysBetween,
+} from "./kpi.js";
 
 const FILES = {
   unidades: ["dim_unidades.csv", []],
@@ -148,14 +152,7 @@ export async function loadData(mode = store.mode) {
   return store;
 }
 
-/** Regra única de OTIF: prazo + completude + qualidade. */
-export function computeOtif(p) {
-  return p.status === "Entregue"
-    && Number(p.atraso_dias || 0) === 0
-    && Number(p.qtd_recebida || 0) >= Number(p.quantidade || 0)
-    && Number(p.qtd_defeito || 0) === 0
-    ? 1 : 0;
-}
+export { computeOtif };
 
 export function buildIndex() {
   const fById = new Map(store.dim.fornecedores.map((f) => [f.id_fornecedor, f]));
@@ -182,7 +179,10 @@ export function buildIndex() {
     q.item = iById.get(q.id_item);
     q.mes = q.data_cotacao?.slice(0, 7);
   }
-  for (const c of store.dim.contratos) c.fornecedor = fById.get(c.id_fornecedor);
+  for (const c of store.dim.contratos) {
+    c.fornecedor = fById.get(c.id_fornecedor);
+    c.categoria = cById.get(c.id_categoria);
+  }
 }
 
 /* ------------------------------ filtros ---------------------------------- */
@@ -263,8 +263,8 @@ export function monthsBetween(from, to) {
 }
 
 /* ------------------------------ agregações ------------------------------- */
-export const validSpend = (p) => p.status !== "Cancelado";
-export const delivered = (p) => p.data_entrega_real && p.status !== "Cancelado";
+export const validSpend = isValidSpend;
+export const delivered = isDelivered;
 
 export function kpis(pedidos, prevPedidos, orcamento, months, f) {
   const cur = pedidos.filter(validSpend);
@@ -373,30 +373,46 @@ export function supplierScorecards(pedidos, cotacoes) {
     const del = rows.filter(delivered);
     const spend = sum(rows, (p) => p.valor_total);
     const saving = sum(rows, (p) => p.saving_valor);
-    const otif = del.length ? sum(del, (p) => p.otif) / del.length : 0;
+    const otif = del.length ? sum(del, (p) => p.otif) / del.length : null;
     const q = quotesByF.get(id) || [];
-    const competitiveness = avg(q.filter((x) => x.preco_referencia).map((x) => 1 - x.preco_unitario / x.preco_referencia));
+    const priced = q.filter((x) => x.preco_referencia);
+    const competitiveness = priced.length ? avg(priced, (x) => 1 - x.preco_unitario / x.preco_referencia) : null;
     const rec = sum(del, (p) => p.qtd_recebida || 0);
     const def = rec ? sum(del, (p) => p.qtd_defeito || 0) / rec : 0;
-    const rating = (f.rating_cadastral || 70) / 100;
-    const prazoScore = clamp(otif, 0, 1);
-    const qualidade = clamp(1 - def * 25, 0, 1);
-    const precoScore = clamp(0.5 + competitiveness * 2.4, 0, 1);
-    const conformidade = clamp(rating * 0.7 + (rows.filter((p) => p.tem_contrato === 1).length / (rows.length || 1)) * 0.3, 0, 1);
-    const score = (prazoScore * 0.35 + qualidade * 0.25 + precoScore * 0.25 + conformidade * 0.15) * 100;
+    const contractSpend = sum(rows.filter((p) => p.tem_contrato === 1), (p) => p.valor_total);
+    const scoreParts = supplierScore({
+      deliveries: del.length,
+      otif,
+      received: rec,
+      defects: sum(del, (p) => p.qtd_defeito || 0),
+      quotes: priced.length,
+      competitiveness,
+      rating: f.rating_cadastral || 0,
+      contractSpend,
+      spend,
+    });
     out.push({
       id, nome: f.razao_social || id, categoria: rows[0]?.categoria?.categoria || "—",
       uf: f.uf, porte: f.porte, risco: f.risco, rating: f.rating_cadastral,
       status: f.status, spend, saving, savingRate: spend ? saving / spend : 0,
-      orders: rows.length, otif, delay: avg(del, (p) => p.atraso_dias || 0),
+      orders: rows.length, deliveries: del.length, otif, delay: avg(del, (p) => p.atraso_dias || 0),
       lead: avg(del, (p) => Math.max(0, (new Date(p.data_entrega_real) - new Date(p.data_emissao)) / 864e5)),
-      defectRate: def, score, prazoScore, qualidade, precoScore, conformidade,
-      contractShare: rows.filter((p) => p.tem_contrato === 1).length / rows.length,
+      defectRate: def, received: rec, defects: sum(del, (p) => p.qtd_defeito || 0),
+      quotes: priced.length, competitiveness, contractSpend, ...scoreParts,
+      classification: supplierClassification(scoreParts.score),
+      contractShare: spend ? contractSpend / spend : 0,
       lastOrder: rows.reduce((m, p) => (p.data_emissao > m ? p.data_emissao : m), ""),
     });
   }
   return out.sort((a, b) => b.spend - a.spend);
 }
+
+/** Gestão contratual (vencimentos, saldo, exposição e reajustes). */
+export function contractsOverview(asOf = store.maxDate) {
+  return contractPortfolio(store.dim.contratos, store.fato.pedidos, asOf);
+}
+
+export { daysBetween };
 
 export function priceStats(precos, pedidos, f) {
   const rows = precos.filter((p) => !f.categoria || p.id_categoria === f.categoria);

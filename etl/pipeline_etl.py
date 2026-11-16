@@ -144,6 +144,10 @@ def validate(frames: dict[str, pd.DataFrame], rep: Report) -> None:
     rep.add("fato_pedido", "domínio de status", invalidos == 0, f"{invalidos} inválidos")
     rep.add("fato_pedido", "OTIF binário", ped["otif"].isin([0, 1]).all(), "")
     rep.add("fato_pedido", "datas de emissão válidas", ped["data_emissao"].notna().all(), "")
+    mes_calc = ped["data_emissao"].dt.strftime("%Y-%m")
+    mes_inconsistente = int((ped["mes_ref"].astype(str) != mes_calc).sum())
+    rep.add("fato_pedido", "mes_ref coerente com data_emissao", mes_inconsistente == 0,
+            f"{mes_inconsistente} competências divergentes")
     rep.add("fato_pedido", "entrega ≥ emissão",
             bool((ped["data_entrega_real"].isna() | (ped["data_entrega_real"] >= ped["data_emissao"])).all()), "")
     rep.add("fato_pedido", "valores positivos", bool((ped[["quantidade", "valor_unitario", "valor_total"]] > 0).all().all()), "")
@@ -215,18 +219,60 @@ def transform(frames: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     return out
 
 
-def load(frames: dict[str, pd.DataFrame], dsn: str) -> None:
-    """Carga transacional em duas fases: staging + swap atômico.
+UPSERT_KEYS = {
+    "dim_unidade": ["id_unidade"],
+    "dim_comprador": ["id_comprador"],
+    "dim_categoria": ["id_categoria"],
+    "dim_item": ["id_item"],
+    "dim_fornecedor": ["id_fornecedor"],
+    "dim_contrato": ["id_contrato"],
+    "fato_pedido": ["id_pedido"],
+    "fato_cotacao": ["id_requisicao", "id_fornecedor", "id_item"],
+    "fato_preco": ["mes_ref", "id_item"],
+    "fato_orcamento": ["mes_ref", "id_categoria", "id_unidade"],
+}
 
-    - Nenhuma tabela de destino é tocada antes de todas as linhas estarem em
-      tabelas temporárias e as contagens conferirem.
-    - O swap usa um único TRUNCATE sem CASCADE, listando explicitamente as
-      tabelas do processo. Se existir uma FK externa apontando para dw.*, a
-      operação falha em vez de apagar dados fora do escopo.
-    - Qualquer erro faz rollback do lote inteiro (inclusive o TRUNCATE).
+RUN_LOG_DDL = """
+CREATE TABLE IF NOT EXISTS dw.etl_run_log (
+    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    started_at      timestamptz NOT NULL DEFAULT now(),
+    finished_at     timestamptz,
+    mode            varchar(12) NOT NULL CHECK (mode IN ('full', 'incremental')),
+    status          varchar(12) NOT NULL CHECK (status IN ('running', 'success', 'failed')),
+    since_date      date,
+    rows_loaded     jsonb NOT NULL DEFAULT '{}'::jsonb,
+    message         text
+)
+"""
+
+
+def filter_since(frames: dict[str, pd.DataFrame], since: str) -> dict[str, pd.DataFrame]:
+    """Recorte incremental por data para fatos; dimensões permanecem completas."""
+    out = {k: v.copy() for k, v in frames.items()}
+    since_date = pd.Timestamp(since)
+    since_month = since_date.strftime("%Y-%m")
+    if "fato_pedido" in out:
+        out["fato_pedido"] = out["fato_pedido"][out["fato_pedido"]["data_emissao"] >= since_date]
+    if "fato_cotacao" in out:
+        out["fato_cotacao"] = out["fato_cotacao"][out["fato_cotacao"]["data_cotacao"] >= since_date]
+    if "fato_preco" in out:
+        out["fato_preco"] = out["fato_preco"][out["fato_preco"]["mes_ref"] >= since_month]
+    if "fato_orcamento" in out:
+        out["fato_orcamento"] = out["fato_orcamento"][out["fato_orcamento"]["mes_ref"] >= since_month]
+    return out
+
+
+def load(frames: dict[str, pd.DataFrame], dsn: str, mode: str = "full", since: str | None = None) -> None:
+    """Carga transacional.
+
+    mode=full        staging + TRUNCATE explícito (sem CASCADE) + swap atômico.
+    mode=incremental staging + INSERT ... ON CONFLICT DO UPDATE por chave natural.
+                     Dimensões são upsert; fatos são upsert pelas chaves do modelo.
+                     `since` reduz o volume extraído, mas atualizações em registros
+                     antigos exigem reenvio explícito (ou CDC na origem).
     """
     import psycopg2  # import local: permite rodar --validate-only sem o driver
-    from psycopg2.extras import execute_values
+    from psycopg2.extras import execute_values, Json
 
     cols = {
         "dim_unidade": ["id_unidade", "unidade", "cidade", "uf", "tipo"],
@@ -252,15 +298,16 @@ def load(frames: dict[str, pd.DataFrame], dsn: str) -> None:
         "fato_orcamento": ["mes_ref", "id_categoria", "id_unidade", "orcamento", "forecast"],
     }
     targets = [table for table, _, _ in TABLES]
+    counts: dict[str, int] = {}
 
     with psycopg2.connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SET search_path TO dw, public")
+            cur.execute(RUN_LOG_DDL)
             # Serializa cargas concorrentes sem bloquear leituras até o swap.
             cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", ("meridian.etl.load.v1",))
 
             # Fase 1 — staging: nada no destino é alterado ainda.
-            print("  staging (nenhuma tabela de destino foi alterada)")
+            print(f"  staging ({mode}; nenhuma tabela de destino foi alterada)")
             for table in targets:
                 df = frames[table][cols[table]].copy()
                 for col in df.columns:
@@ -280,27 +327,65 @@ def load(frames: dict[str, pd.DataFrame], dsn: str) -> None:
                 staged = int(cur.fetchone()[0])
                 if staged != len(values):
                     raise RuntimeError(f"staging de {table}: {staged} linhas, esperado {len(values)}")
+                counts[table] = staged
                 print(f"  staging {stg:<22} {staged:>6} linhas validadas")
 
-            # Fase 2 — swap atômico. A lista explícita evita CASCADE.
-            print("  swap atômico (TRUNCATE sem CASCADE + INSERT ... SELECT)")
-            cur.execute("TRUNCATE TABLE " + ", ".join(f"dw.{table}" for table in targets))
-            for table in targets:
-                columns = ", ".join(cols[table])
-                cur.execute(
-                    f"INSERT INTO dw.{table} ({columns}) "
-                    f"SELECT {columns} FROM stg_{table}"
-                )
-                cur.execute(f"SELECT count(*) FROM dw.{table}")
-                loaded = int(cur.fetchone()[0])
-                if loaded != len(frames[table]):
-                    raise RuntimeError(f"carga de {table}: {loaded} linhas, esperado {len(frames[table])}")
-                cur.execute(f"ANALYZE dw.{table}")
-                print(f"  carregado dw.{table:<16} {loaded:>6} linhas")
+            if mode == "incremental":
+                print("  merge incremental (INSERT ... ON CONFLICT DO UPDATE)")
+                for table in targets:
+                    columns = ", ".join(cols[table])
+                    keys = UPSERT_KEYS[table]
+                    updates = [c for c in cols[table] if c not in keys]
+                    action = ", ".join(f"{c} = EXCLUDED.{c}" for c in updates) or "NOTHING"
+                    conflict = f"ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {action}"
+                    cur.execute(
+                        f"INSERT INTO dw.{table} ({columns}) "
+                        f"SELECT {columns} FROM stg_{table} {conflict}"
+                    )
+                    cur.execute(f"ANALYZE dw.{table}")
+                    print(f"  merge   dw.{table:<16} {counts[table]:>6} linhas")
+            else:
+                # Fase 2 — swap atômico. A lista explícita evita CASCADE.
+                print("  swap atômico (TRUNCATE sem CASCADE + INSERT ... SELECT)")
+                cur.execute("TRUNCATE TABLE " + ", ".join(f"dw.{table}" for table in targets))
+                for table in targets:
+                    columns = ", ".join(cols[table])
+                    cur.execute(
+                        f"INSERT INTO dw.{table} ({columns}) "
+                        f"SELECT {columns} FROM stg_{table}"
+                    )
+                    cur.execute(f"SELECT count(*) FROM dw.{table}")
+                    loaded = int(cur.fetchone()[0])
+                    if loaded != len(frames[table]):
+                        raise RuntimeError(f"carga de {table}: {loaded} linhas, esperado {len(frames[table])}")
+                    cur.execute(f"ANALYZE dw.{table}")
+                    print(f"  carregado dw.{table:<16} {loaded:>6} linhas")
 
-        # Commit único: staging e swap entram juntos; erro => rollback do lote.
+            cur.execute(
+                "INSERT INTO dw.etl_run_log (finished_at, mode, status, since_date, rows_loaded, message) "
+                "VALUES (now(), %s, 'success', %s, %s, %s)",
+                (mode, since, Json(counts), "carga concluída"),
+            )
+        # Commit único: staging, swap/merge e log entram juntos.
         conn.commit()
 
+
+def record_failure(dsn: str, mode: str, since: str | None, counts: dict[str, int], message: str) -> None:
+    """Registra a falha fora da transação desfeita (log não é perdido no rollback)."""
+    try:
+        import psycopg2
+        from psycopg2.extras import Json
+        with psycopg2.connect(dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(RUN_LOG_DDL)
+                cur.execute(
+                    "INSERT INTO dw.etl_run_log (finished_at, mode, status, since_date, rows_loaded, message) "
+                    "VALUES (now(), %s, 'failed', %s, %s, %s)",
+                    (mode, since, Json(counts), message[:4000]),
+                )
+            conn.commit()
+    except Exception as exc:  # log é best-effort; não esconder o erro original
+        print(f"  ! não foi possível registrar a falha no etl_run_log: {exc}")
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="ETL Meridian BI")
@@ -308,8 +393,13 @@ def main() -> int:
     parser.add_argument("--dsn", default=os.getenv("DATABASE_URL", ""),
                         help="DSN PostgreSQL. Sem DSN, executa apenas extração + validação.")
     parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--mode", choices=["full", "incremental"], default="full",
+                        help="full = swap atômico; incremental = merge por chave natural")
+    parser.add_argument("--since", default=None,
+                        help="Data ISO (YYYY-MM-DD) para recorte incremental dos fatos")
     parser.add_argument("--report-dir", type=Path, default=ROOT / "etl" / "out")
     args = parser.parse_args()
+    mode = "incremental" if args.since else args.mode
 
     rep = Report()
     print("→ EXTRACT")
@@ -318,10 +408,17 @@ def main() -> int:
     validate(frames, rep)
     print("→ TRANSFORM")
     frames = transform(frames)
+    if args.since:
+        print(f"→ INCREMENTAL desde {args.since} (dimensões completas)")
+        frames = filter_since(frames, args.since)
 
     if args.dsn and not args.validate_only:
-        print("→ LOAD")
-        load(frames, args.dsn)
+        print(f"→ LOAD ({mode})")
+        try:
+            load(frames, args.dsn, mode=mode, since=args.since)
+        except Exception as exc:
+            record_failure(args.dsn, mode, args.since, {}, str(exc))
+            raise
 
     args.report_dir.mkdir(parents=True, exist_ok=True)
     report_path = args.report_dir / "quality_report.json"

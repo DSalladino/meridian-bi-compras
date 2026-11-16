@@ -166,3 +166,49 @@ SELECT razao_social, round(spend, 2) AS spend,
        CASE WHEN acumulado <= 0.8 THEN 'A' WHEN acumulado <= 0.95 THEN 'B' ELSE 'C' END AS classe_abc
 FROM r
 ORDER BY spend DESC;
+
+-- 13) Contratos a vencer, vencidos com pedido ativo e exposição
+SELECT id_contrato, id_fornecedor, id_categoria, situacao,
+       dias_para_vencimento, valor_anual, realizado, saldo,
+       execucao_pct, exposicao, reajuste_pct,
+       CASE
+           WHEN alerta_vencido_com_pedido THEN 'crítico'
+           WHEN alerta_a_vencer OR alerta_reajuste OR alerta_execucao THEN 'atenção'
+           ELSE 'ok'
+       END AS prioridade
+FROM dw.vw_contrato_gestao
+WHERE situacao IN ('Vencido', 'A vencer')
+   OR alerta_reajuste OR alerta_execucao
+ORDER BY alerta_vencido_com_pedido DESC, dias_para_vencimento, valor_anual DESC;
+
+-- 14) Previsão de spend por regressão linear (6 meses) + próximo trimestre
+WITH meses AS (
+    SELECT mes_ref,
+           sum(valor_total) AS spend,
+           row_number() OVER (ORDER BY mes_ref) AS t
+    FROM dw.fato_pedido
+    WHERE status <> 'Cancelado'
+      AND mes_ref >= to_char((SELECT max(mes_ref)::date FROM dw.fato_pedido) - interval '6 months', 'YYYY-MM')
+    GROUP BY mes_ref
+),
+reg AS (
+    SELECT regr_slope(spend, t) AS slope,
+           regr_intercept(spend, t) AS intercept,
+           max(t) AS t_max
+    FROM meses
+)
+SELECT to_char((SELECT max(mes_ref)::date FROM dw.fato_pedido) + (g.n || ' month')::interval, 'YYYY-MM') AS mes_previsto,
+       round(greatest(0, reg.intercept + reg.slope * (reg.t_max + g.n)), 2) AS spend_previsto
+FROM reg
+CROSS JOIN generate_series(1, 3) AS g(n)
+ORDER BY g.n;
+
+-- 15) Distribuição de fornecedores por classificação de score
+SELECT classificacao,
+       count(*) AS fornecedores,
+       round(avg(score), 1) AS score_medio,
+       round(sum(spend), 2) AS spend,
+       round(sum(spend) / nullif((SELECT sum(valor_total) FROM dw.fato_pedido WHERE status <> 'Cancelado'), 0) * 100, 1) AS share_pct
+FROM dw.vw_fornecedor_scorecard
+GROUP BY classificacao
+ORDER BY score_medio DESC NULLS LAST;

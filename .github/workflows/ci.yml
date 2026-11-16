@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    name: Web · KPIs e exportações
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: npm run check
+
+  etl-sql:
+    name: ETL · PostgreSQL · paridade SQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: meridian
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meridian
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r etl/requirements.txt
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Testes unitários do ETL
+        run: python -m unittest discover -s etl -p "test_*.py" -v
+      - name: Validar dataset
+        run: python etl/pipeline_etl.py --validate-only
+      - name: Criar DDL
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/01_ddl.sql
+      - name: Carga full
+        run: python etl/pipeline_etl.py --dsn "$DATABASE_URL" --mode full
+      - name: Views e governança
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/02_views_kpi.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/04_governanca.sql
+      - name: Reconciliar painel × SQL
+        run: npm run test:sql
+      - name: Carga incremental
+        run: python etl/pipeline_etl.py --dsn "$DATABASE_URL" --mode incremental --since 2026-09-01
+      - name: Validar histórico e integridade
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "select mode, status, rows_loaded from dw.etl_run_log order by id;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "select * from dw.vw_integridade_checklist where ocorrencias > 0;"
+          test "$(psql "$DATABASE_URL" -At -c "select count(*) from dw.vw_integridade_checklist where ocorrencias > 0")" = "0"

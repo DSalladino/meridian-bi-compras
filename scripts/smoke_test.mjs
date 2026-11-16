@@ -58,6 +58,7 @@ check("FK fornecedor", pedidos.every((p) => fSet.has(p.id_fornecedor)));
 check("FK item", pedidos.every((p) => iSet.has(p.id_item)));
 check("FK categoria", pedidos.every((p) => cSet.has(p.id_categoria)));
 check("status válido", pedidos.every((p) => ["Entregue", "Em trânsito", "Parcial", "Atrasado", "Cancelado"].includes(p.status)));
+check("mes_ref coerente com a emissão", pedidos.every((p) => p.mes_ref === p.data_emissao.slice(0, 7)));
 check("saving consistente com baseline", pedidos.every((p) =>
   Math.abs(Number(p.saving_valor) - (Number(p.preco_referencia) - Number(p.valor_unitario)) * Number(p.quantidade)) <= 1));
 check("defeito ≤ recebido", pedidos.every((p) => Number(p.qtd_defeito) <= Number(p.qtd_recebida)));

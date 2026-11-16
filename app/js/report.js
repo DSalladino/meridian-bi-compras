@@ -59,7 +59,7 @@ export function exportExcel(c) {
         { header: "Atraso médio", width: 12, type: "num" }, { header: "Defeitos", width: 10, type: "pct" },
         { header: "Rating", width: 9, type: "int" }, { header: "Score", width: 9, type: "num" },
       ],
-      rows: c.suppliers.map((s) => [s.nome, s.categoria, s.uf, s.risco, s.spend, s.orders, s.otif, s.delay, s.defectRate, s.rating, Number(s.score.toFixed(2))]),
+      rows: c.suppliers.map((s) => [s.nome, s.categoria, s.uf, s.risco, s.spend, s.orders, s.otif, s.delay, s.defectRate, s.rating, s.score == null ? "" : Number(s.score.toFixed(2))]),
     },
     {
       name: "Pedidos",
@@ -103,7 +103,7 @@ export function exportPDF(c) {
   const k = c.k;
   const rep = document.getElementById("print-report");
   const topSup = c.suppliers.slice(0, 10);
-  const worst = [...c.suppliers].filter((s) => s.orders >= 4).sort((a, b) => a.otif - b.otif).slice(0, 8);
+  const worst = [...c.suppliers].filter((s) => s.orders >= 4 && s.otif != null).sort((a, b) => a.otif - b.otif).slice(0, 8);
   const obs = c.prices.categorias.filter((x) => Math.abs(x.variacao) > 0.01).slice(0, 6);
 
   const rk = (label, value, sub = "") => `<div class="r-kpi"><span>${esc(label)}</span><strong>${value}</strong>${sub ? `<div style="font-size:7.5pt;color:#7d7689">${sub}</div>` : ""}</div>`;
@@ -158,7 +158,7 @@ export function exportPDF(c) {
     <div class="r-section">2. Desempenho de fornecedores</div>
     <table class="r-table">
       <thead><tr><th>Fornecedor</th><th>Categoria</th><th class="r">Spend</th><th class="r">Pedidos</th><th class="r">OTIF</th><th class="r">Atraso</th><th class="r">Defeitos</th><th class="r">Score</th><th>Risco</th></tr></thead>
-      <tbody>${topSup.map((s) => `<tr><td>${esc(s.nome)}</td><td>${esc(s.categoria)}</td><td class="r">${brl(s.spend)}</td><td class="r">${s.orders}</td><td class="r">${pct(s.otif)}</td><td class="r">${num(s.delay, 1)} d</td><td class="r">${pct(s.defectRate, 2)}</td><td class="r">${s.score.toFixed(1)}</td><td>${esc(s.risco)}</td></tr>`).join("")}</tbody>
+      <tbody>${topSup.map((s) => `<tr><td>${esc(s.nome)}</td><td>${esc(s.categoria)}</td><td class="r">${brl(s.spend)}</td><td class="r">${s.orders}</td><td class="r">${pct(s.otif)}</td><td class="r">${num(s.delay, 1)} d</td><td class="r">${pct(s.defectRate, 2)}</td><td class="r">${s.score == null ? "—" : s.score.toFixed(1)}</td><td>${esc(s.risco)}</td></tr>`).join("")}</tbody>
     </table>
     <div class="r-foot"><span>Top 10 fornecedores por spend · score = prazo 35% + qualidade 25% + preço 25% + conformidade 15%</span><span>Meridian BI · página 1/2</span></div>
   </div>

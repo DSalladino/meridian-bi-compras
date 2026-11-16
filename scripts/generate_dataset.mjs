@@ -264,16 +264,24 @@ for (const [y, m] of months) {
 }
 
 /* ------------------------------- contratos ------------------------------- */
+const ASOF_CONTRATOS = new Date(Date.UTC(2026, 9, 31));
 for (const cat of categorias) {
   const pool = byCat[cat[0]].filter((f) => f.status === 'Ativo' && f.rating > 74).slice(0, 5);
   for (const f of pool) {
-    const ini = new Date(Date.UTC(randInt(2022, 2025), randInt(0, 11), randInt(1, 27)));
-    const fim = new Date(Date.UTC(ini.getUTCFullYear() + 1, ini.getUTCMonth(), ini.getUTCDate()));
+    // Garante uma carteira realista na data de referência: vigentes, a vencer
+    // em até 90 dias e encerrados com histórico. Antes, quase todos venciam
+    // antes do início dos fatos e o realizado contratual ficava irreal.
+    const cenario = r();
+    let fim;
+    if (cenario < 0.2) fim = addDays(ASOF_CONTRATOS, randInt(15, 89));
+    else if (cenario < 0.55) fim = addDays(ASOF_CONTRATOS, randInt(120, 700));
+    else fim = addDays(ASOF_CONTRATOS, -randInt(30, 500));
+    const ini = addDays(fim, -randInt(365, 730));
     contratos.push([
       `CT-${ini.getUTCFullYear()}-${String(contratos.length + 1).padStart(3, '0')}`,
       f.id, cat[0], iso(ini), iso(fim), round(rand(420000, 4200000), 2),
       round(rand(2.8, 8.4), 2), pick(['IPCA', 'IGP-M', 'IPCA', 'INCC']),
-      fim < new Date('2026-10-31') ? 'Encerrado' : 'Vigente',
+      fim < ASOF_CONTRATOS ? 'Encerrado' : 'Vigente',
     ]);
   }
 }
@@ -319,7 +327,7 @@ write('fato_orcamento.csv', ['mes_ref', 'id_categoria', 'id_unidade', 'orcamento
 write('dim_contratos.csv', ['id_contrato', 'id_fornecedor', 'id_categoria', 'data_inicio', 'data_fim', 'valor_anual', 'reajuste_pct', 'indice_reajuste', 'status'], contratos);
 
 const spend = pedidos.filter((p) => p.status !== 'Cancelado').reduce((s, p) => s + p.valor, 0);
-const sav = pedidos.reduce((s, p) => s + p.saving, 0);
+const sav = pedidos.filter((p) => p.status !== 'Cancelado').reduce((s, p) => s + p.saving, 0);
 console.log('\nSpend total   R$', (spend / 1e6).toFixed(2), 'M');
 console.log('Savings total R$', (sav / 1e6).toFixed(2), 'M |', ((sav / spend) * 100).toFixed(1), '%');
 console.log('Pedidos', pedidos.length, '| Cotações', cotacoes.length, '| Fornecedores', fornecedores.length);

@@ -31,15 +31,37 @@ CALCULATE (
 
 Itens Comprados := DISTINCTCOUNT ( fato_pedido[id_item] )
 
-Quantidade Recebida := SUM ( fato_pedido[qtd_recebida] )
-Quantidade Defeituosa := SUM ( fato_pedido[qtd_defeito] )
+// Quantidades seguem o mesmo universo do OTIF: entregas com data real e
+// pedidos não cancelados. Assim a taxa de defeito não é diluída por cancelados.
+Quantidade Recebida :=
+CALCULATE (
+    SUM ( fato_pedido[qtd_recebida] ),
+    NOT ISBLANK ( fato_pedido[data_entrega_real] ),
+    fato_pedido[status] <> "Cancelado"
+)
+
+Quantidade Defeituosa :=
+CALCULATE (
+    SUM ( fato_pedido[qtd_defeito] ),
+    NOT ISBLANK ( fato_pedido[data_entrega_real] ),
+    fato_pedido[status] <> "Cancelado"
+)
 
 // -----------------------------------------------------------------------------
 // 02 · ECONOMIA (SAVINGS)
 // -----------------------------------------------------------------------------
-Baseline := SUMX ( fato_pedido, fato_pedido[quantidade] * fato_pedido[preco_referencia] )
+Baseline :=
+CALCULATE (
+    SUMX ( fato_pedido, fato_pedido[quantidade] * fato_pedido[preco_referencia] ),
+    fato_pedido[status] <> "Cancelado"
+)
 
-Economia := SUM ( fato_pedido[saving_valor] )
+// Mesma definição do painel/SQL: cancelados não entram em economia.
+Economia :=
+CALCULATE (
+    SUM ( fato_pedido[saving_valor] ),
+    fato_pedido[status] <> "Cancelado"
+)
 
 Taxa Economia := DIVIDE ( [Economia], [Spend] )
 
@@ -108,7 +130,12 @@ COUNTROWS (
 // -----------------------------------------------------------------------------
 // 04 · PRAZOS E QUALIDADE
 // -----------------------------------------------------------------------------
-Entregas := CALCULATE ( COUNTROWS ( fato_pedido ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) )
+Entregas :=
+CALCULATE (
+    COUNTROWS ( fato_pedido ),
+    NOT ISBLANK ( fato_pedido[data_entrega_real] ),
+    fato_pedido[status] <> "Cancelado"
+)
 
 // Regra canônica: prazo + completude + qualidade (não depende do flag do CSV).
 OTIF :=
@@ -127,7 +154,11 @@ RETURN
 // Auditoria: compara a regra canônica com o flag persistido.
 OTIF por Flag :=
 DIVIDE (
-    CALCULATE ( SUM ( fato_pedido[otif] ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) ),
+    CALCULATE (
+        SUM ( fato_pedido[otif] ),
+        NOT ISBLANK ( fato_pedido[data_entrega_real] ),
+        fato_pedido[status] <> "Cancelado"
+    ),
     [Entregas]
 )
 
@@ -141,12 +172,18 @@ Entregas Atrasadas := CALCULATE ( COUNTROWS ( fato_pedido ), fato_pedido[atraso_
 
 % Entregas Atrasadas := DIVIDE ( [Entregas Atrasadas], [Entregas] )
 
-Atraso Médio (dias) := CALCULATE ( AVERAGE ( fato_pedido[atraso_dias] ), NOT ISBLANK ( fato_pedido[data_entrega_real] ) )
+Atraso Médio (dias) :=
+CALCULATE (
+    AVERAGE ( fato_pedido[atraso_dias] ),
+    NOT ISBLANK ( fato_pedido[data_entrega_real] ),
+    fato_pedido[status] <> "Cancelado"
+)
 
 Atraso P90 (dias) :=
 CALCULATE (
     PERCENTILEX.INC ( fato_pedido, fato_pedido[atraso_dias], 0.9 ),
-    NOT ISBLANK ( fato_pedido[data_entrega_real] )
+    NOT ISBLANK ( fato_pedido[data_entrega_real] ),
+    fato_pedido[status] <> "Cancelado"
 )
 
 Lead Time Médio (dias) :=
@@ -155,7 +192,8 @@ CALCULATE (
         fato_pedido,
         DATEDIFF ( fato_pedido[data_emissao], fato_pedido[data_entrega_real], DAY )
     ),
-    NOT ISBLANK ( fato_pedido[data_entrega_real] )
+    NOT ISBLANK ( fato_pedido[data_entrega_real] ),
+    fato_pedido[status] <> "Cancelado"
 )
 
 Lead Time Planejado :=
@@ -223,14 +261,60 @@ DIVIDE (
 Spend Fora de Contrato :=
 CALCULATE ( [Spend], fato_pedido[tem_contrato] = FALSE() )
 
+// Mesma referência do painel/SQL: fim do mês da última emissão.
+Data Referência Contratual := EOMONTH ( MAX ( fato_pedido[data_emissao] ), 0 )
+
 Contratos Vigentes :=
-CALCULATE (
-    COUNTROWS ( dim_contrato ),
-    dim_contrato[status] = "Vigente"
-)
+VAR Ref = [Data Referência Contratual]
+RETURN
+    CALCULATE (
+        COUNTROWS ( dim_contrato ),
+        dim_contrato[status] <> "Suspenso",
+        dim_contrato[data_inicio] <= Ref,
+        dim_contrato[data_fim] >= Ref
+    )
+
+Contratos a Vencer 90d :=
+VAR Ref = [Data Referência Contratual]
+RETURN
+    CALCULATE (
+        COUNTROWS ( dim_contrato ),
+        dim_contrato[status] <> "Suspenso",
+        dim_contrato[data_inicio] <= Ref,
+        dim_contrato[data_fim] >= Ref,
+        dim_contrato[data_fim] <= Ref + 90
+    )
+
+Contratos Vencidos :=
+VAR Ref = [Data Referência Contratual]
+RETURN
+    CALCULATE (
+        COUNTROWS ( dim_contrato ),
+        dim_contrato[status] <> "Suspenso",
+        dim_contrato[data_fim] < Ref
+    )
 
 Valor Contratado :=
 CALCULATE ( SUM ( dim_contrato[valor_anual] ), dim_contrato[status] = "Vigente" )
+
+Reajustes Acima do Limite :=
+CALCULATE ( COUNTROWS ( dim_contrato ), dim_contrato[reajuste_pct] > 5 )
+
+Exposição Contratual :=
+VAR Ref = [Data Referência Contratual]
+VAR Fornecedor = MAX ( dim_contrato[id_fornecedor] )
+VAR Categoria = MAX ( dim_contrato[id_categoria] )
+VAR Fim = MAX ( dim_contrato[data_fim] )
+RETURN
+    CALCULATE (
+        [Spend],
+        REMOVEFILTERS ( dim_contrato ),
+        fato_pedido[id_fornecedor] = Fornecedor,
+        fato_pedido[id_categoria] = Categoria,
+        fato_pedido[data_emissao] > Fim,
+        fato_pedido[data_emissao] <= Ref,
+        fato_pedido[status] IN { "Em trânsito", "Parcial", "Atrasado" }
+    )
 
 Competitividade :=
 AVERAGEX (
@@ -239,18 +323,40 @@ AVERAGEX (
 )
 
 // Score composto 0–100 (prazo 35%, qualidade 25%, preço 25%, conformidade 15%)
+// Regra canônica: pilar sem histórico é excluído e os pesos restantes são
+// renormalizados; publica somente com >= 3 pilares. Fornecedor sem entrega ou
+// sem proposta vencedora não recebe score artificial.
 Score Fornecedor :=
-VAR Prazo = [OTIF]
-VAR Qualidade = 1 - MIN ( 1, [Taxa de Defeito] * 25 )
-VAR Preço = MAX ( 0, MIN ( 1, 0.5 + [Competitividade] * 2.4 ) )
+VAR TemPrazo = NOT ISBLANK ( [OTIF] )
+VAR TemQualidade = NOT ISBLANK ( [Taxa de Defeito] ) && [Quantidade Recebida] > 0
+VAR TemPreco = NOT ISBLANK ( [Competitividade] )
+VAR Pilares =
+    IF ( TemPrazo, 1, 0 ) + IF ( TemQualidade, 1, 0 ) + IF ( TemPreco, 1, 0 ) + 1
+VAR PesoDisponivel =
+    IF ( TemPrazo, 0.35 ) + IF ( TemQualidade, 0.25 ) + IF ( TemPreco, 0.25 ) + 0.15
+VAR Prazo = IF ( TemPrazo, [OTIF], 0 )
+VAR Qualidade = IF ( TemQualidade, 1 - MIN ( 1, [Taxa de Defeito] * 25 ), 0 )
+VAR Preço = IF ( TemPreco, MAX ( 0, MIN ( 1, 0.5 + [Competitividade] * 2.4 ) ), 0 )
 VAR Conformidade =
-    AVERAGE ( dim_fornecedor[rating_cadastral] ) / 100 * 0.7 + [Cobertura Contratual] * 0.3
+    DIVIDE ( AVERAGE ( dim_fornecedor[rating_cadastral] ), 100 ) * 0.7
+        + COALESCE ( [Cobertura Contratual], 0 ) * 0.3
 RETURN
-    ROUND ( ( Prazo * 0.35 + Qualidade * 0.25 + Preço * 0.25 + Conformidade * 0.15 ) * 100, 1 )
+    IF (
+        Pilares >= 3,
+        ROUND (
+            DIVIDE (
+                Prazo * 0.35 + Qualidade * 0.25 + Preço * 0.25 + Conformidade * 0.15,
+                PesoDisponivel
+            ) * 100,
+            1
+        ),
+        BLANK ()
+    )
 
 Classificação Fornecedor :=
 SWITCH (
     TRUE (),
+    ISBLANK ( [Score Fornecedor] ), "Sem histórico suficiente",
     [Score Fornecedor] >= 85, "Estratégico",
     [Score Fornecedor] >= 70, "Preferencial",
     [Score Fornecedor] >= 55, "Aprovado",
@@ -278,19 +384,31 @@ VAR IndiceBase =
     CALCULATE ( AVERAGE ( fato_preco[indice_categoria] ), fato_preco[mes_ref] = MesBase )
 RETURN DIVIDE ( IndiceAtual, IndiceBase ) * 100
 
+// Variação por item comparando a competência mais recente com 12 meses antes.
+Variação Preço Item 12m :=
+VAR MesAtual = MAX ( fato_preco[mes_ref] )
+VAR MesBase = FORMAT ( EDATE ( DATEVALUE ( MesAtual & "-01" ), -12 ), "yyyy-MM" )
+VAR Atual = CALCULATE ( AVERAGE ( fato_preco[preco_medio] ), fato_preco[mes_ref] = MesAtual )
+VAR Anterior = CALCULATE ( AVERAGE ( fato_preco[preco_medio] ), fato_preco[mes_ref] = MesBase )
+RETURN
+    IF ( ISBLANK ( MesAtual ) || ISBLANK ( Anterior ), BLANK (), DIVIDE ( Atual, Anterior ) - 1 )
+
+// Agregado ponderado pelo spend do item (mesma regra do painel/SQL).
 Variação Preços 12m :=
-VAR Atual = AVERAGE ( fato_preco[preco_medio] )
-VAR Anterior =
-    CALCULATE (
-        AVERAGE ( fato_preco[preco_medio] ),
-        DATEADD ( dim_calendario[data], -12, MONTH )
+VAR Itens =
+    ADDCOLUMNS (
+        VALUES ( dim_item[id_item] ),
+        "@var", [Variação Preço Item 12m],
+        "@spend", [Spend]
     )
-RETURN DIVIDE ( Atual, Anterior ) - 1
+VAR Validos = FILTER ( Itens, NOT ISBLANK ( [@var] ) && [@spend] > 0 )
+RETURN
+    DIVIDE ( SUMX ( Validos, [@var] * [@spend] ), SUMX ( Validos, [@spend] ) )
 
 Impacto Financeiro Reajuste := [Spend] * [Variação Preços 12m]
 
 Itens em Alta :=
-COUNTROWS ( FILTER ( VALUES ( dim_item[id_item] ), [Variação Preços 12m] > 0.03 ) )
+COUNTROWS ( FILTER ( VALUES ( dim_item[id_item] ), [Variação Preço Item 12m] > 0.03 ) )
 
 // -----------------------------------------------------------------------------
 // 07 · TEMPO E COMPARATIVOS
@@ -311,6 +429,19 @@ AVERAGEX (
     DATESINPERIOD ( dim_calendario[data], MAX ( dim_calendario[data] ), -3, MONTH ),
     [Spend]
 )
+
+// Previsão simples de tendência; o painel usa regressão linear em /app/js/kpi.js.
+Previsão Spend Próximo Mês :=
+[Spend Média Móvel 3M] * ( 1 + COALESCE ( [Spend MoM %], 0 ) )
+
+Previsão Spend 3M := [Spend Média Móvel 3M] * 3
+
+// Simulação de renegociação (tabela 'Parâmetros Simulação' com colunas
+// Desconto e Cobertura, ambas em fração 0–1).
+Desconto Simulado := COALESCE ( SELECTEDVALUE ( 'Parâmetros Simulação'[Desconto] ), 0.03 )
+Cobertura Simulada := COALESCE ( SELECTEDVALUE ( 'Parâmetros Simulação'[Cobertura] ), 0.6 )
+Economia Incremental Simulada := [Spend] * [Cobertura Simulada] * [Desconto Simulado]
+Nova Taxa Economia Simulada := DIVIDE ( [Economia] + [Economia Incremental Simulada], [Spend] - [Economia Incremental Simulada] )
 
 Pedidos por Comprador := DIVIDE ( [Pedidos], DISTINCTCOUNT ( fato_pedido[id_comprador] ) )
 

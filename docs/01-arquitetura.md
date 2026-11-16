@@ -44,12 +44,15 @@ O repositório entrega **duas camadas de consumo** sobre o mesmo modelo semânti
 | --- | --- | --- |
 | `scripts/generate_dataset.mjs` | geração determinística do dataset | Node 18+, sem dependências |
 | `etl/generate_data.py` | geração equivalente em Python | Python 3.11+ |
-| `etl/pipeline_etl.py` | validação, tratamento e carga | pandas + psycopg2 |
+| `etl/pipeline_etl.py` | validação, tratamento, carga full/incremental e log | pandas + psycopg2 |
 | `sql/01_ddl.sql` | modelo estrela, constraints e índices | PostgreSQL 16 |
-| `sql/02_views_kpi.sql` | camada semântica reutilizável | SQL |
-| `app/` | dashboard analítico | HTML, CSS e ES Modules |
+| `sql/02_views_kpi.sql` | camada semântica, score, contratos e reconciliação | SQL |
+| `sql/04_governanca.sql` | histórico de cargas e checklist de integridade | SQL |
+| `app/js/kpi.js` | regras canônicas de KPI usadas pelo painel e testes | ES Modules |
+| `app/` | dashboard analítico (7 páginas) | HTML, CSS e ES Modules |
+| `tests/` | KPI, paridade, upload e exportação | Node test runner |
 | `server.js` | servidor estático local | Node `http` |
-| `powerbi/` | tema e guia do modelo | JSON + Markdown |
+| `powerbi/` | tema, Power Query CSV/PostgreSQL e guia do modelo | JSON + Markdown |
 
 ## Fluxo de dados
 
@@ -62,20 +65,23 @@ O repositório entrega **duas camadas de consumo** sobre o mesmo modelo semânti
    `valor_total − quantidade × valor_unitario`, derivação de `mes_ref` e
    `saving_potencial`.
 4. **Load** — staging temporário (`CREATE TEMP TABLE ... ON COMMIT DROP`) + validação de
-   contagens + `TRUNCATE` explícito **sem CASCADE** + `INSERT ... SELECT` em ordem de
-   dependência, dentro de uma transação única. Falha em qualquer tabela desfaz o lote.
+   contagens. No modo `full`, `TRUNCATE` explícito **sem CASCADE** + `INSERT ... SELECT` em
+   ordem de dependência, dentro de uma transação única. No modo `incremental`, `INSERT ...
+   ON CONFLICT DO UPDATE` por chave natural, sem truncar. Falha em qualquer tabela desfaz o
+   lote e é registrada em `dw.etl_run_log`.
    O `TRUNCATE` lista apenas as 10 tabelas do processo; uma FK externa faz a carga falhar
    em vez de apagar objetos fora do escopo.
 5. **Report** — `etl/out/quality_report.json` com contagens, checks e timestamp UTC.
 
 ## Modelo de atualização
 
-- **Histórico**: o dataset cobre jan/2024 → out/2026. A carga é full refresh por ser
-  pequena (≈ 17 mil linhas); em produção, o desenho suporta incremental por `mes_ref`.
+- **Histórico**: o dataset cobre jan/2024 → out/2026. A carga full (≈ 17 mil linhas) é o
+  padrão da demonstração; `--mode incremental --since AAAA-MM-DD` faz merge por chave
+  natural e registra a execução.
 - **Agendamento recomendado**: diário às 05:00 (cron/Agendador) com carga full para dims e
   incremental por data para fatos; atualização do Power BI 30 min depois.
-- **Idempotência**: a carga trunca e reescreve; o mesmo CSV produz o mesmo resultado.
-  No painel, uploads são idempotentes por `id_pedido` (substitui, não duplica).
+- **Idempotência**: full trunca e reescreve; incremental faz upsert. O mesmo CSV produz o
+  mesmo resultado. No painel, uploads são idempotentes por `id_pedido` (substitui, não duplica).
 - **Rollback**: staging, swap e contagens ficam na mesma transação. Qualquer erro executa
   rollback e mantém a versão anterior da camada gold intacta. Para rollback entre versões
   de negócio, manter um `pg_dump -Fc` antes de cargas de produção e restaurar em banco

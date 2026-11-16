@@ -6,8 +6,9 @@ import {
 import {
   store, periodBounds, prevBounds, applyFilters, monthsBetween, kpis, spendByMonth,
   budgetByMonth, byCategory, supplierScorecards, priceStats, priceIndexSeries,
-  quoteStats, validSpend, delivered, storedUploadsCount, DATA_MODES,
+  quoteStats, validSpend, delivered, storedUploadsCount, DATA_MODES, contractsOverview,
 } from "./data.js";
+import { forecastSpend, simulateRenegotiation, supplierClassification } from "./kpi.js";
 import { lineChart, barChart, hbar, donut, scatter, heatmap, radar, gauge, divergingBars, legend } from "./charts.js";
 
 export const ui = { ctx: null, supplier: null, item: null, page: "exec" };
@@ -46,6 +47,7 @@ const statusBadge = (s) => badge(s, s === "Entregue" ? "mint" : s === "Atrasado"
 const tdR = (v, cls = "") => `<td class="r ${cls}">${v}</td>`;
 
 function scoreBar(score) {
+  if (score == null) return `<span class="tiny muted" title="Pilares insuficientes para publicar o score">sem histórico</span>`;
   const c = score >= 80 ? "mint" : score >= 65 ? "" : "blush";
   return `<div class="bar-cell"><div class="bar-track"><div class="bar-fill ${c}" style="width:${clamp(score, 0, 100)}%"></div></div><span class="num">${score.toFixed(1)}</span></div>`;
 }
@@ -67,9 +69,11 @@ export function buildContext() {
   const monthly = spendByMonth(cur.pedidos, months);
   const budgetM = budgetByMonth(store.fato.orcamento, months, flt);
   const spendSeries = months.map((m) => monthly.find((x) => x.mes === m)?.valor || 0);
+  const forecast = forecastSpend(monthly, { horizon: 3, budgetSeries: budgetM });
+  const contracts = contractsOverview(store.maxDate);
 
   ui.ctx = {
-    filters: flt, months, k, cats, suppliers: sup, prices, quotes: qs,
+    filters: flt, months, k, cats, suppliers: sup, prices, quotes: qs, forecast, contracts,
     pedidos: cur.pedidos, cotacoes: cur.cotacoes, prevPedidos: prev.pedidos,
     monthly, budgetM, spendSeries, bounds: b, prevBounds: pb,
   };
@@ -101,7 +105,7 @@ function pageExec(c) {
       icon: "▤",
     });
   }
-  const { k, cats, months, spendSeries, budgetM, prices, monthly } = c;
+  const { k, cats, months, spendSeries, budgetM, prices, monthly, forecast } = c;
   const adher = k.adherence || 0;
   const deltaSpend = k.spendDelta;
   const topSup = c.suppliers.slice(0, 10);
@@ -125,6 +129,20 @@ function pageExec(c) {
     </div>`).join("");
 
   const insights = buildInsights(c);
+  const forecastLabels = [...months, ...forecast.months.map((m) => m.mes)];
+  const forecastActual = [...spendSeries, ...forecast.months.map(() => null)];
+  const forecastValues = [...months.map(() => null), ...forecast.months.map((m) => m.valor)];
+  const forecastCard = card("col-12", "Previsão de spend e orçamento", `Projeção para os próximos 3 meses · ${forecast.method}`,
+    `<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:8px">
+      ${kpiCard({ label: "Previsão 3 meses", value: brl(forecast.total), sub: `${monthLabel(forecast.months[0].mes, true)} → ${monthLabel(forecast.months[2].mes, true)}`, accent: "lilac", neutral: true })}
+      ${kpiCard({ label: "Tendência mensal", value: `${forecast.slope >= 0 ? "+" : "−"}${brl(Math.abs(forecast.slope))}`, sub: `R² ${num(forecast.r2, 2)} · ${forecast.history.length} meses observados`, accent: forecast.slope >= 0 ? "blush" : "mint" })}
+      ${kpiCard({ label: "Orçamento de referência", value: brl(forecast.budgetReference), sub: "média dos últimos 3 meses", accent: "butter", neutral: true })}
+      ${kpiCard({ label: "Gap projetado", value: brl(forecast.total - forecast.budgetReference * forecast.months.length), sub: "previsão − orçamento de referência", accent: "sky", neutral: true })}
+    </div>
+    ${lineChart({ labels: forecastLabels, series: [
+      { name: "Realizado", color: PALETTE.lilac, values: forecastActual },
+      { name: "Previsão", color: PALETTE.mint, values: forecastValues, dashed: true },
+    ], height: 210, yFmt: (v) => brl(v) })}`);
 
   return `${kpisHtml}
   <div class="grid">
@@ -146,6 +164,7 @@ function pageExec(c) {
       hbar({ items: topSup.map((s) => ({ label: s.nome, value: s.spend, tip: `${brl(s.spend)} · ${s.orders} pedidos · OTIF ${pct(s.otif)}`, color: PALETTE.lilac })), labelWidth: 210 }))}
     ${card("col-5", "Economia mensal", "Savings capturados sobre o preço de referência",
       barChart({ labels: months, series: [{ name: "Economia", color: PALETTE.mint, values: monthly.map((m) => m.saving) }], height: 226 }) + legend([{ label: "Taxa média de economia", color: PALETTE.lilac }]) + `<div class="muted tiny" style="margin-top:-4px">Média do período: <strong>${pct(k.savingRate)}</strong> · ${brl(k.saving)}</div>`)}
+    ${forecastCard}
     ${card("col-8", "Mapa de calor — categoria × mês", "Intensidade do spend mensal por categoria",
       heatmap({
         rows: cats.slice(0, 8).map((x) => x.nome),
@@ -181,6 +200,39 @@ function buildInsights(c) {
 }
 
 /* --------------------------- cotações & economia -------------------------- */
+function simulationResult(c, discountPct, coveragePct, volumeDeltaPct) {
+  const sim = simulateRenegotiation({
+    spend: c.k.spend, saving: c.k.saving, discountPct, coveragePct, volumeDeltaPct,
+  });
+  return {
+    ...sim,
+    html: `<div class="stat-list">
+      <div class="srow"><span>Spend elegível</span><strong class="num">${brl(sim.eligible)}</strong></div>
+      <div class="srow"><span>Economia incremental</span><strong class="num" style="color:#3f7d63">${brl(sim.incremental)}</strong></div>
+      <div class="srow"><span>Nova economia total</span><strong class="num">${brl(sim.newSaving)}</strong></div>
+      <div class="srow"><span>Novo spend</span><strong class="num">${brl(sim.newSpend)}</strong></div>
+      <div class="srow"><span>Nova taxa de economia</span><strong class="num">${pct(sim.newSavingRate)}</strong></div>
+    </div>
+    <div class="tiny muted" style="margin-top:8px">Simulação sobre o recorte filtrado. O desconto incide apenas no spend elegível; o volume altera o spend e a economia proporcionalmente.</div>`,
+  };
+}
+
+function simulationCard(c) {
+  const initial = simulationResult(c, 0.03, 0.6, 0);
+  return `<div class="sim-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px">
+    <label class="tiny muted">Desconto adicional (%)
+      <input class="control" id="sim-discount" type="number" min="0" max="30" step="0.5" value="3" style="width:100%;margin-top:4px" />
+    </label>
+    <label class="tiny muted">Spend elegível (%)
+      <input class="control" id="sim-coverage" type="number" min="0" max="100" step="5" value="60" style="width:100%;margin-top:4px" />
+    </label>
+    <label class="tiny muted">Variação de volume (%)
+      <input class="control" id="sim-volume" type="number" min="-50" max="50" step="5" value="0" style="width:100%;margin-top:4px" />
+    </label>
+  </div>
+  <div id="sim-output">${initial.html}</div>`;
+}
+
 function pageCotacoes(c) {
   if (!c.cotacoes.length) {
     return emptyPage({
@@ -256,6 +308,7 @@ function pageCotacoes(c) {
       }), `<span class="chip">${pct(q.bestPriceShare, 0)} menor preço</span>`)}
     ${card("col-5", "Top itens por economia", "Onde a negociação gerou mais valor",
       hbar({ items: topSavings, labelWidth: 175, color: PALETTE.sky }))}
+    ${card("col-12", "Simulador de renegociação", "Sensibilidade da economia a desconto adicional, cobertura e volume", simulationCard(c))}
     ${card("col-12", "Propostas recebidas", `Amostra de ${Math.min(80, c.cotacoes.length)} propostas · use os filtros para refinar`,
       table(
         [{ label: "Requisição" }, { label: "Data" }, { label: "Item" }, { label: "Fornecedor" }, { label: "Qtd.", cls: "r" },
@@ -278,25 +331,26 @@ function pageFornecedores(c) {
   }
   const focus = suppliers.find((s) => s.id === ui.supplier) || suppliers[0];
   const medianSpend = median(suppliers, (s) => s.spend);
-  const medianOtif = median(suppliers, (s) => s.otif);
+  const medianOtif = median(suppliers.filter((s) => s.otif != null), (s) => s.otif);
   const ratingAvg = avg(suppliers, (s) => s.rating);
+  const scored = suppliers.filter((s) => s.score != null);
 
   const kpisHtml = `<div class="kpis">
     ${kpiCard({ label: "Fornecedores ativos", value: num(k.suppliersCount), sub: `${num(suppliers.filter((s) => s.risco === "Alto").length)} de alto risco`, accent: "lilac" })}
     ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)} (${hhiBand(k.hhi)})`, accent: "blush" })}
     ${kpiCard({ label: "Rating cadastral médio", value: num(ratingAvg, 1), sub: "escala 0–100", accent: "sky" })}
     ${kpiCard({ label: "Cobertura contratual", value: pct(k.contractShare, 0), sub: "spend com contrato vigente", accent: "mint" })}
-    ${kpiCard({ label: "Score médio ponderado", value: num(avg(suppliers, (s) => s.score), 1), sub: "prazo, qualidade, preço e conformidade", accent: "sage" })}
+    ${kpiCard({ label: "Score médio ponderado", value: num(avg(scored, (s) => s.score), 1), sub: `${scored.length} fornecedores com histórico suficiente`, accent: "sage" })}
     ${kpiCard({ label: "Fornecedores exclusivos", value: num(suppliers.filter((s) => s.orders >= 3 && s.spend / (k.spend || 1) > 0.02).length), sub: "acima de 2% do spend", accent: "butter" })}
   </div>`;
 
   const matrix = scatter({
-    points: suppliers.slice(0, 45).map((s) => ({
+    points: suppliers.filter((s) => s.otif != null).slice(0, 45).map((s) => ({
       x: s.spend, y: s.otif,
       r: 4 + Math.min(10, Math.sqrt(s.orders) * 1.5),
       color: s.risco === "Alto" ? PALETTE.blush : s.risco === "Médio" ? PALETTE.butter : PALETTE.mint,
       label: s.nome.split(" ")[0], highlight: s.spend > medianSpend * 2,
-      tip: `${s.nome}\nSpend ${brl(s.spend)} · ${s.orders} pedidos\nOTIF ${pct(s.otif)} · score ${s.score.toFixed(1)}\nRisco ${s.risco}`,
+      tip: `${s.nome}\nSpend ${brl(s.spend)} · ${s.orders} pedidos\nOTIF ${pct(s.otif)} · score ${s.score == null ? "—" : s.score.toFixed(1)}\nRisco ${s.risco}`,
     })),
     xLabel: "Spend no período (R$)", yLabel: "OTIF", height: 360,
     yFmt: (v) => pct(v, 0), xFmt: (v) => brl(v),
@@ -306,13 +360,13 @@ function pageFornecedores(c) {
 
   const radarHtml = focus ? `<div style="display:flex;justify-content:center">${radar({
     axes: ["Prazo (OTIF)", "Qualidade", "Competitividade", "Conformidade"],
-    series: [{ name: focus.nome, color: PALETTE.lilac, values: [focus.prazoScore, focus.qualidade, focus.precoScore, focus.conformidade] }],
+    series: [{ name: focus.nome, color: PALETTE.lilac, values: [focus.prazoScore ?? 0, focus.qualidade ?? 0, focus.precoScore ?? 0, focus.conformidade ?? 0] }],
     size: 250,
   })}</div>
   <div style="text-align:center;margin-top:4px">
     <div style="font-size:13px;font-weight:650">${esc(focus.nome)}</div>
-    <div class="tiny muted">${esc(focus.categoria)} · ${esc(focus.uf || "")} · score ${focus.score.toFixed(1)}</div>
-    <div style="margin-top:6px">${riskBadge(focus.risco)} ${badge(`OTIF ${pct(focus.otif)}`, focus.otif >= 0.9 ? "mint" : "blush")}</div>
+    <div class="tiny muted">${esc(focus.categoria)} · ${esc(focus.uf || "")} · score ${focus.score == null ? "sem histórico" : focus.score.toFixed(1)} · ${esc(supplierClassification(focus.score))}</div>
+    <div style="margin-top:6px">${riskBadge(focus.risco)} ${badge(`OTIF ${pct(focus.otif)}`, focus.otif == null ? "sky" : focus.otif >= 0.9 ? "mint" : "blush")}</div>
   </div>
   <div class="hdivider"></div>
   <div class="small-grid">
@@ -338,7 +392,7 @@ function pageFornecedores(c) {
   const ufAgg = [...groupBy(suppliers, (s) => s.uf || "—").entries()].map(([uf, rows]) => ({ label: uf, value: sum(rows, (x) => x.spend), tip: `${rows.length} fornecedores` })).sort((a, b) => b.value - a.value).slice(0, 8);
 
   const topSpend = suppliers.slice(0, 12);
-  const worst = [...suppliers].filter((s) => s.orders >= 5).sort((a, b) => a.otif - b.otif).slice(0, 8).map((s) => ({
+  const worst = [...suppliers].filter((s) => s.orders >= 5 && s.otif != null).sort((a, b) => a.otif - b.otif).slice(0, 8).map((s) => ({
     label: s.nome, value: s.otif, color: PALETTE.blush,
     display: pct(s.otif), tip: `${brl(s.spend)} · ${s.orders} pedidos`,
   }));
@@ -533,12 +587,89 @@ function pagePrecos(c) {
   </div>`;
 }
 
+/* --------------------------- contratos & riscos --------------------------- */
+const contractBadge = (situacao) => {
+  const cls = situacao === "Vencido" ? "blush" : situacao === "A vencer" ? "butter" : situacao === "Vigente" ? "mint" : situacao === "Suspenso" ? "blush" : "sky";
+  return badge(situacao, cls);
+};
+
+function pageContratos(c) {
+  const { contracts } = c;
+  const t = contracts.totals;
+  if (!contracts.rows.length) {
+    return emptyPage({
+      title: "Nenhum contrato na base",
+      text: "A gestão contratual depende da dimensão de contratos. Restaure o dataset demo ou carregue o cadastro de contratos no PostgreSQL.",
+      icon: "▥",
+    });
+  }
+  const kpisHtml = `<div class="kpis">
+    ${kpiCard({ label: "Contratos vigentes", value: num(t.vigentes), sub: `${num(t.contratos)} contratos cadastrados`, accent: "mint" })}
+    ${kpiCard({ label: "A vencer em 90 dias", value: num(t.aVencer90), sub: `limite de alerta: 90 dias · média ${num(t.reajusteMedio, 1)}% de reajuste`, accent: "butter" })}
+    ${kpiCard({ label: "Vencidos com pedido ativo", value: num(t.vencidosComPedidoAtivo), sub: `${brl(t.exposicao)} de exposição`, accent: t.vencidosComPedidoAtivo ? "blush" : "sage" })}
+    ${kpiCard({ label: "Valor contratado", value: brl(t.valorContratado), sub: "soma do valor anual dos contratos", accent: "lilac" })}
+    ${kpiCard({ label: "Realizado vs. contratado", value: pct(t.valorContratado ? t.realizado / t.valorContratado : null, 0), sub: `${brl(t.realizado)} realizados no período de vigência`, accent: "sky" })}
+    ${kpiCard({ label: "Saldo contratual", value: brl(t.saldo), sub: `${t.alertasCriticos} alerta(s) crítico(s)`, accent: t.saldo >= 0 ? "sage" : "blush" })}
+  </div>`;
+
+  const alerts = contracts.alertas.slice(0, 10).map((a) => {
+    const cls = a.level === "critical" ? "bad" : a.level === "warn" ? "warn" : "info";
+    const icon = a.level === "critical" ? "⚠" : a.level === "warn" ? "!" : "i";
+    return `<div class="insight ${cls}"><div class="ico">${icon}</div><div><strong>${esc(a.contrato.id_contrato)} · ${esc(a.contrato.fornecedor?.razao_social || a.contrato.id_fornecedor)}</strong><p>${esc(a.message)}</p></div></div>`;
+  }).join("");
+
+  const rows = contracts.rows.slice(0, 60).map((r) => [
+    `<td><div class="name-cell"><strong class="mono tiny">${esc(r.id_contrato)}</strong><span class="tiny muted">${esc(r.categoria?.categoria || r.id_categoria)}</span></div></td>`,
+    `<td>${esc(r.fornecedor?.razao_social || r.id_fornecedor)}</td>`,
+    `<td class="tiny">${dateBR(r.data_inicio)} → ${dateBR(r.data_fim)}</td>`,
+    `<td>${contractBadge(r.situacao)}</td>`,
+    tdR(brl(r.valor_anual)),
+    tdR(brl(r.realizado)),
+    tdR(`<span class="badge ${r.saldo < 0 ? "blush" : "mint"}">${brl(r.saldo)}</span>`),
+    tdR(r.execucao == null ? "—" : pct(r.execucao, 0)),
+    tdR(`${num(r.reajuste_pct, 2)}% <span class="tiny muted">${esc(r.indice_reajuste)}</span>`),
+    tdR(r.exposicao ? `<span class="badge blush">${brl(r.exposicao)}</span>` : "—"),
+  ]);
+
+  return `${kpisHtml}
+  <div class="grid">
+    ${card("col-5", "Alertas contratuais", "Vencimento, reajuste e execução acima do limite", alerts || `<div class="empty">Nenhum alerta no recorte atual.</div>`)}
+    ${card("col-7", "Valor contratado por situação", "Distribuição do valor anual dos contratos",
+      hbar({
+        items: ["Vencido", "A vencer", "Vigente", "Futuro", "Encerrado", "Suspenso"].map((s, i) => ({
+          label: s,
+          value: sum(contracts.rows.filter((r) => r.situacao === s), (r) => r.valor_anual),
+          color: [PALETTE.blush, PALETTE.butter, PALETTE.mint, PALETTE.sky, PALETTE.lilac, PALETTE.rose][i],
+          tip: `${contracts.rows.filter((r) => r.situacao === s).length} contrato(s)`,
+        })),
+        labelWidth: 105,
+      }))}
+    ${card("col-12", "Carteira de contratos", "Saldo, execução, reajuste e exposição financeira · ordenada por criticidade",
+      table(
+        [{ label: "Contrato" }, { label: "Fornecedor" }, { label: "Vigência" }, { label: "Situação" },
+         { label: "Valor anual", cls: "r" }, { label: "Realizado", cls: "r" }, { label: "Saldo", cls: "r" },
+         { label: "Execução", cls: "r" }, { label: "Reajuste", cls: "r" }, { label: "Exposição", cls: "r" }],
+        rows
+      ), `<span class="chip">${num(t.vencidos)} vencidos · ${num(t.aVencer90)} a vencer</span>`)}
+    ${card("col-12", "Regras de gestão contratual", "Como os alertas são calculados",
+      `<div class="stat-list">
+        <div class="srow"><span>Vencido com pedido ativo</span><strong>crítico · pedido em aberto após <span class="mono">data_fim</span></strong></div>
+        <div class="srow"><span>A vencer</span><strong>até 90 dias do vencimento</strong></div>
+        <div class="srow"><span>Reajuste acima do limite</span><strong>${num(5, 1)}% · parâmetro do projeto</strong></div>
+        <div class="srow"><span>Execução</span><strong>realizado ÷ valor anual · alerta acima de 90%</strong></div>
+        <div class="srow"><span>Realizado</span><strong>pedidos do mesmo fornecedor/categoria dentro da vigência</strong></div>
+      </div>
+      <p class="tiny muted" style="margin:10px 0 0">O vínculo é feito por fornecedor + categoria + janela de vigência, pois o fato de pedido não carrega <span class="mono">id_contrato</span>. Em produção, a chave contratual deve ser persistida no pedido para eliminar ambiguidade em contratos sobrepostos.</p>`)}
+  </div>`;
+}
+
 /* ------------------------------- dados / ETL ------------------------------ */
 function pageDados(c) {
   const rows = [
     ["dim_fornecedores", "Cadastro de fornecedores", store.dim.fornecedores.length, "id_fornecedor", "gold"],
     ["dim_itens", "Catálogo de itens e preço de referência", store.dim.itens.length, "id_item", "gold"],
     ["dim_categorias", "Hierarquia de categorias de compra", store.dim.categorias.length, "id_categoria", "gold"],
+    ["dim_contratos", "Carteira contratual: vigência, valor e reajuste", store.dim.contratos.length, "id_contrato", "gold"],
     ["fato_pedidos", "Pedidos de compra (grão: item/pedido)", store.fato.pedidos.length, "id_pedido", "gold"],
     ["fato_cotacoes", "Propostas por requisição", store.fato.cotacoes.length, "id_requisicao", "gold"],
     ["fato_precos", "Série mensal de preços por item", store.fato.precos.length, "id_item + mes_ref", "gold"],
@@ -587,7 +718,7 @@ function pageDados(c) {
         <div class="srow"><span>Fonte de dados</span><strong>${esc(DATA_MODES[store.mode]?.label || store.mode)}</strong></div>
       </div>
       <div class="hdivider"></div>
-      <div class="tiny muted">Pipeline: <span class="mono">extract → validate → transform → load (gold)</span>. O dataset versionado em <span class="mono">/data</span> é gerado de forma determinística (seed fixa), permitindo reprodutibilidade.</div>`)}
+      <div class="tiny muted">Pipeline: <span class="mono">extract → validate → transform → load (gold)</span>. O dataset versionado em <span class="mono">/data</span> é gerado de forma determinística (seed fixa), permitindo reprodutibilidade. A carga aceita <span class="mono">--mode incremental --since AAAA-MM-DD</span> com upsert e log em <span class="mono">dw.etl_run_log</span>.</div>`)}
     ${card("col-12", "Dicionário de dados", "Tabelas do modelo estrela expostas ao dashboard",
       table(
         [{ label: "Tabela" }, { label: "Descrição" }, { label: "Linhas", cls: "r" }, { label: "Chave" }, { label: "Camada" }],
@@ -612,12 +743,22 @@ export function renderPage(page) {
       : page === "fornecedores" ? pageFornecedores(c)
         : page === "prazos" ? pagePrazos(c)
           : page === "precos" ? pagePrecos(c)
-            : pageDados(c);
+            : page === "contratos" ? pageContratos(c)
+              : pageDados(c);
   const el = document.getElementById(`page-${page}`);
   el.innerHTML = html;
   const picker = el.querySelector("#supplier-picker");
   if (picker) picker.addEventListener("change", (e) => { ui.supplier = e.target.value; renderPage("fornecedores"); });
   const itemPicker = el.querySelector("#item-picker");
   if (itemPicker) itemPicker.addEventListener("change", (e) => { ui.item = e.target.value; renderPage("precos"); });
+  const simInputs = ["sim-discount", "sim-coverage", "sim-volume"].map((id) => el.querySelector(`#${id}`)).filter(Boolean);
+  if (simInputs.length) {
+    const update = () => {
+      const [discount, coverage, volume] = simInputs.map((input) => Number(input.value) || 0);
+      const out = el.querySelector("#sim-output");
+      if (out) out.innerHTML = simulationResult(c, discount / 100, coverage / 100, volume / 100).html;
+    };
+    simInputs.forEach((input) => input.addEventListener("input", update));
+  }
   return c;
 }

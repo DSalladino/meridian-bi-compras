@@ -2,33 +2,89 @@
 
 ## Diagrama estrela
 
+```mermaid
+erDiagram
+    dim_calendario ||--o{ fato_pedido : "data_emissao"
+    dim_calendario ||--o{ fato_cotacao : "data_cotacao (inativa no PBI)"
+    dim_calendario ||--o{ fato_preco : "mes_ref / ano_mes"
+    dim_calendario ||--o{ fato_orcamento : "mes_ref / ano_mes"
+
+    dim_fornecedor ||--o{ fato_pedido : "id_fornecedor"
+    dim_fornecedor ||--o{ fato_cotacao : "id_fornecedor"
+    dim_fornecedor ||--o{ dim_contrato : "id_fornecedor"
+    dim_categoria  ||--o{ dim_fornecedor : "id_categoria"
+    dim_categoria  ||--o{ fato_pedido : "id_categoria"
+    dim_categoria  ||--o{ fato_cotacao : "id_categoria"
+    dim_categoria  ||--o{ fato_preco : "id_categoria"
+    dim_categoria  ||--o{ fato_orcamento : "id_categoria"
+    dim_categoria  ||--o{ dim_contrato : "id_categoria"
+    dim_item       ||--o{ fato_pedido : "id_item"
+    dim_item       ||--o{ fato_cotacao : "id_item"
+    dim_item       ||--o{ fato_preco : "id_item"
+    dim_comprador  ||--o{ fato_pedido : "id_comprador"
+    dim_unidade    ||--o{ fato_pedido : "id_unidade"
+    dim_unidade    ||--o{ fato_orcamento : "id_unidade"
+
+    dim_fornecedor {
+        char4 id_fornecedor PK
+        varchar razao_social
+        char2 id_categoria FK
+        varchar risco
+        smallint rating_cadastral
+    }
+    dim_contrato {
+        varchar id_contrato PK
+        char4 id_fornecedor FK
+        char2 id_categoria FK
+        date data_inicio
+        date data_fim
+        numeric valor_anual
+        numeric reajuste_pct
+    }
+    fato_pedido {
+        varchar id_pedido PK
+        date data_emissao FK
+        char4 id_fornecedor FK
+        char4 id_item FK
+        char2 id_categoria FK
+        char2 id_comprador FK
+        char2 id_unidade FK
+        numeric valor_total
+        numeric saving_valor
+        smallint otif
+    }
+    fato_cotacao {
+        varchar id_requisicao
+        char4 id_fornecedor FK
+        char4 id_item FK
+        smallint selecionada
+        numeric preco_unitario
+    }
+    fato_preco {
+        char7 mes_ref PK
+        char4 id_item PK
+        numeric preco_medio
+        numeric indice_categoria
+    }
+    fato_orcamento {
+        char7 mes_ref PK
+        char2 id_categoria PK
+        char2 id_unidade PK
+        numeric orcamento
+        numeric forecast
+    }
 ```
-                        ┌────────────────┐
-                        │ dim_calendario │
-                        └───────┬────────┘
-                                │ data
-┌───────────────┐        ┌──────▼─────────┐        ┌───────────────┐
-│ dim_fornecedor│◄───────┤  fato_pedido   ├───────►│  dim_categoria│
-│ (risco, UF,   │        │ grão: pedido   │        │ (grupo,       │
-│  rating, lead)│        │ (item/forn.)   │        │  criticidade) │
-└───────┬───────┘        └──┬───┬───┬─────┘        └───────┬───────┘
-        │                   │   │   │                      │
-        │              ┌────▼┐  │   └──────┐        ┌──────▼───────┐
-        │              │dim_ │  │          │        │  dim_item    │
-        │              │item │◄─┘          │        │ (preço ref.) │
-        │              └─────┘             │        └──────────────┘
-        │                                  │
-┌───────▼────────┐              ┌──────────▼────────┐   ┌──────────────┐
-│ dim_contrato   │              │ dim_comprador     │   │ dim_unidade  │
-│ (vigência,     │              └───────────────────┘   └──────┬───────┘
-│  reajuste)     │                                            │
-└────────────────┘                                   ┌────────▼────────┐
-                                                     │ fato_orcamento  │
-┌────────────────┐        ┌──────────────────┐       └─────────────────┘
-│ fato_cotacao   │        │  fato_preco      │
-│ grão: proposta │        │ grão: item/mês   │
-└────────────────┘        └──────────────────┘
-```
+
+> O diagrama é renderizado pelo GitHub (Mermaid). A versão vetorial para apresentações e
+> documentação offline está em [`modelo-estrela.svg`](modelo-estrela.svg). O modelo Power BI
+> é descrito em [`../powerbi/README.md`](../powerbi/README.md).
+
+### Caminho do contrato
+
+`dim_contrato` se relaciona com `dim_fornecedor` e `dim_categoria`. O fato de pedido não
+tem `id_contrato`; a análise contratual usa **fornecedor + categoria + vigência** (veja
+`vw_contrato_gestao` e `contractPortfolio`). Em produção, persistir a chave do contrato no
+pedido elimina a ambiguidade quando há contratos sobrepostos.
 
 ## Grãos e chaves
 
@@ -68,6 +124,7 @@ ganho analítico.
 | `fato_preco[mes_ref]` | `dim_calendario[ano_mes]` | N:1 | simples | relacionamento por atributo |
 | `fato_orcamento[mes_ref]` | `dim_calendario[ano_mes]` | N:1 | simples | |
 | `dim_contrato[id_fornecedor]` | `dim_fornecedor` | N:1 | simples | |
+| `dim_contrato[id_categoria]` | `dim_categoria` | N:1 | simples | análise contratual por categoria |
 
 `id_categoria` aparece no fato **e** na dimensão de item. A duplicação é intencional: evita
 um join extra em consultas de spend por categoria e permite categorizar compras de serviços
@@ -84,7 +141,7 @@ que não têm item de catálogo. A consistência é garantida por validação no
 | `valor_unitario` | decimal | preço negociado (sem frete) |
 | `valor_total` | decimal | quantidade × preço + frete |
 | `preco_referencia` | decimal | baseline de mercado (catálogo/IPCA) |
-| `saving_valor` | decimal | `(preco_referencia − valor_unitario) × quantidade`, nunca negativo |
+| `saving_valor` | decimal | `(preco_referencia − valor_unitario) × quantidade`; **pode ser negativo** em sobrepreço |
 | `tem_contrato` | booleano | cobertura contratual no momento do pedido |
 | `data_entrega_prevista` | data | prazo acordado |
 | `data_entrega_real` | data | nulo enquanto não entregue |

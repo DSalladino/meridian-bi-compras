@@ -286,8 +286,16 @@ def main(out: Path):
     for (cid, *_rest) in CATEGORIAS:
         pool = [f for f in por_cat[cid] if f["status"] == "Ativo" and f["rating"] > 74][:5]
         for f in pool:
-            inicio = date(RNG.randint(2022, 2025), RNG.randint(1, 12), RNG.randint(1, 27))
-            fim = date(inicio.year + 1, inicio.month, inicio.day)
+            # Carteira realista na data de referência: vigentes, a vencer em
+            # até 90 dias e encerrados com histórico.
+            cenario = RNG.random()
+            if cenario < 0.2:
+                fim = add_days(HOJE, RNG.randint(15, 89))
+            elif cenario < 0.55:
+                fim = add_days(HOJE, RNG.randint(120, 700))
+            else:
+                fim = add_days(HOJE, -RNG.randint(30, 500))
+            inicio = add_days(fim, -RNG.randint(365, 730))
             contratos.append([
                 f"CT-{inicio.year}-{len(contratos) + 1:03d}", f["id"], cid, d(inicio), d(fim),
                 brl(RNG.uniform(420000, 4200000)), round(RNG.uniform(2.8, 8.4), 2),
@@ -350,7 +358,7 @@ def main(out: Path):
                "reajuste_pct", "indice_reajuste", "status"], contratos)
 
     spend = sum(p[12] for p in pedidos if p[22] != "Cancelado")
-    saving = sum(p[14] for p in pedidos)
+    saving = sum(p[14] for p in pedidos if p[22] != "Cancelado")
     print(f"\nSpend total   R$ {spend / 1e6:.2f} mi")
     print(f"Savings total R$ {saving / 1e6:.2f} mi ({saving / spend * 100:.1f}%)")
     print(f"Pedidos {len(pedidos)} | Cotações {len(cotacoes)} | Fornecedores {len(fornecedores)}")

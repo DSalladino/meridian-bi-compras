@@ -47,7 +47,8 @@ negociado supera a referência (sobrepreço em compra spot ou emergencial); o to
 proposta mais cara recebida. Isso evita “economia artificial” e permite comparar meses.
 
 ```dax
-Economia := SUM ( fato_pedido[saving_valor] )
+Economia :=
+CALCULATE ( SUM ( fato_pedido[saving_valor] ), fato_pedido[status] <> "Cancelado" )
 Taxa Economia := DIVIDE ( [Economia], [Spend] )
 ```
 
@@ -60,7 +61,7 @@ round(sum(p.valor_total) / nullif(sum(o.orcamento), 0) * 100, 1)
 ```
 
 ### OTIF
-`entregas no prazo, completas e sem defeito ÷ entregas com data real`.
+`entregas no prazo, completas e sem defeito ÷ entregas com data real e status <> Cancelado`.
 “No prazo” = `atraso_dias = 0`; “completo” = `qtd_recebida >= quantidade`;
 “sem defeito” = `qtd_defeito = 0`. No PostgreSQL a coluna é `GENERATED ALWAYS`; no ETL,
 no DAX e no painel a mesma regra é recalculada para auditoria.
@@ -77,7 +78,6 @@ VAR Base =
             && fato_pedido[qtd_defeito] = 0
     )
 RETURN DIVIDE ( COUNTROWS ( Base ), [Entregas] )
-```
 ```
 
 ### Lead time e atraso
@@ -113,6 +113,20 @@ O score combina quatro pilares:
 
 Classificação: ≥85 Estratégico · 70–84,9 Preferencial · 55–69,9 Aprovado · <55 Em desenvolvimento.
 
+**Fornecedor sem histórico:** pilar sem dados é excluído e os pesos restantes são
+renormalizados. O score só é publicado com **3 ou mais pilares**; com menos, o retorno é
+nulo e a interface exibe “sem histórico suficiente”. Assim um fornecedor novo (sem entregas
+ou sem proposta vencedora) não é premiado com 0,5 artificial nem penalizado com zero.
+
+Exemplos cobertos por teste:
+
+| Situação | Pilares | Resultado |
+| --- | ---: | --- |
+| Entregas + qualidade + preço | 4 | score normal |
+| Entregas + qualidade, sem cotação vencedora | 3 | pesos renormalizados |
+| Sem entrega, com cotação | 2 | `null` / sem histórico |
+| Sem fato nenhum | 1 | `null` / sem histórico |
+
 ### Variação de preços 12 meses
 Por item: `preço_atual ÷ preço_12_meses_atrás − 1`. O agregado é ponderado pelo spend do
 item, não pela média simples — um item caro não distorce o índice.
@@ -120,6 +134,44 @@ item, não pela média simples — um item caro não distorce o índice.
 ### Spread médio das propostas
 `(maior_total − menor_total) ÷ maior_total` por requisição. Mede a dispersão do mercado e
 a qualidade do processo de cotação.
+
+### Gestão contratual
+
+A carteira é calculada com a referência de data = **fim do mês do fato mais recente** (a mesma
+`store.maxDate` do painel, considerando pedidos, preços e orçamento):
+
+| Indicador | Fórmula |
+| --- | --- |
+| Situação | Futuro / Vigente / A vencer (≤ 90 dias) / Vencido / Suspenso |
+| Realizado | pedidos não cancelados do mesmo fornecedor + categoria dentro de `data_inicio` e `data_fim` |
+| Saldo | `valor_anual − realizado` |
+| Execução | `realizado ÷ valor_anual` |
+| Exposição | pedidos em aberto (Em trânsito, Parcial, Atrasado) emitidos após `data_fim` |
+| Alerta crítico | vencido **com** pedido ativo após o vencimento |
+| Alerta de reajuste | `reajuste_pct > 5%` (limite configurável do projeto) |
+
+O vínculo usa fornecedor + categoria + vigência porque `fato_pedido` não carrega
+`id_contrato`. Contratos sobrepostos podem exigir a chave explícita em produção.
+
+### Previsão de spend
+
+Regressão linear sobre os últimos 6 meses com spend > 0. A projeção de 3 meses usa a
+tendência e uma banda de **1,5 σ** dos resíduos. O orçamento de referência é a média dos
+últimos 3 meses, pois o dataset não tem orçamento futuro. É uma leitura de tendência, não
+um modelo sazonal.
+
+### Simulação de renegociação
+
+```
+spend_elegivel   = spend × cobertura × (1 + variação_volume)
+economia_extra   = spend_elegivel × desconto_adicional
+nova_economia    = economia_atual × (spend_elegivel / spend) + economia_extra
+novo_spend       = spend × (1 + variação_volume) − economia_extra
+nova_taxa        = nova_economia / novo_spend
+```
+
+O simulador da página **Cotações & economia** expõe desconto, cobertura e volume e
+recalcula no cliente; a mesma lógica existe em DAX (`Economia Incremental Simulada`).
 
 ## Metas e limites de alerta
 
@@ -133,6 +185,9 @@ a qualidade do processo de cotação.
 | Spend em alto risco | ≤ 5% | 5–10% | > 10% |
 | HHI | < 1.500 | 1.500–2.500 | > 2.500 |
 | Variação de preços 12m | ≤ IPCA | +2 p.p. | +5 p.p. |
+| Contratos a vencer | 0 sem plano | ≤ 90 dias | vencido com pedido ativo |
+| Reajuste contratual | ≤ 5% | 5–7% | > 7% |
+| Execução contratual | ≤ 90% | 90–100% | > 100% |
 
 ## Mapa indicador → página
 

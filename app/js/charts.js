@@ -4,6 +4,7 @@ import { brl, num, pct, monthLabel, esc, SERIES, SOFT } from "./util.js";
 let uid = 0;
 const id = (p) => `${p}${++uid}`;
 const fmtAxis = (v) => (Math.abs(v) >= 1000 ? brl(v) : num(v, Math.abs(v) < 10 && v % 1 ? 1 : 0));
+const axisLabel = (v) => (/^\d{4}-\d{2}$/.test(String(v)) ? monthLabel(v) : String(v ?? ""));
 
 function niceStep(x) {
   if (!Number.isFinite(x) || x <= 0) return 1;
@@ -76,7 +77,7 @@ export function lineChart({ labels, series, height = 230, yFmt = fmtAxis, area =
       paths += pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="${s.dashed ? 2.6 : 3.4}" fill="#fff" stroke="${color}" stroke-width="2"/>`).join("");
     }
     paths += s.values.map((v, i) => (Number.isFinite(v)
-      ? `<circle cx="${x(i)}" cy="${sc.y(v)}" r="11" fill="transparent" data-tip="${esc(s.name)} · ${esc(monthLabel(labels[i]))}\n${yFmt(v)}"/>`
+      ? `<circle cx="${x(i)}" cy="${sc.y(v)}" r="11" fill="transparent" data-tip="${esc(s.name)} · ${esc(axisLabel(labels[i]))}\n${yFmt(v)}"/>`
       : "")).join("");
   });
 
@@ -90,7 +91,7 @@ export function lineChart({ labels, series, height = 230, yFmt = fmtAxis, area =
   let xlab = "";
   labels.forEach((l, i) => {
     if (i % every !== 0 && i !== labels.length - 1) return;
-    xlab += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(monthLabel(l))}</text>`;
+    xlab += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(axisLabel(l))}</text>`;
   });
 
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Série temporal">
@@ -128,7 +129,7 @@ export function barChart({ labels, series, height = 230, yFmt = fmtAxis, stacked
       const h = Math.max(0, sc.y(acc) - y0);
       acc += v;
       bars += `<rect x="${x0 + 0.6}" y="${y0}" width="${Math.max(1, bw - 1.2)}" height="${Math.max(0.6, h)}" rx="${Math.min(4, bw / 3)}"
-        fill="${color}" data-tip="${esc(s.name)} · ${esc(monthLabel(lab))}\n${yFmt(v)}"/>`;
+        fill="${color}" data-tip="${esc(s.name)} · ${esc(axisLabel(lab))}\n${yFmt(v)}"/>`;
     });
   });
   let tgt = "";
@@ -140,7 +141,7 @@ export function barChart({ labels, series, height = 230, yFmt = fmtAxis, stacked
   let xlab = "";
   labels.forEach((l, i) => {
     if (i % every !== 0 && i !== labels.length - 1) return;
-    xlab += `<text x="${m.l + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${esc(monthLabel(l))}</text>`;
+    xlab += `<text x="${m.l + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${esc(axisLabel(l))}</text>`;
   });
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">${grid}${bars}${tgt}
     <line class="axis-line" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/>${xlab}</svg>

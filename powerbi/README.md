@@ -12,7 +12,8 @@ repositório em ~20 minutos.
   [`../docs/capturas/`](../docs/capturas/)).
 
 Se o arquivo for publicado no futuro, prefira um link de **release** ou SharePoint, nunca
-um blob no histórico do Git.
+um blob no histórico do Git. O roteiro completo de conexão, validação, publicação e release
+do `.pbix` está em [`../docs/07-integracao-powerbi.md`](../docs/07-integracao-powerbi.md).
 
 ## Evidências visuais
 
@@ -88,6 +89,8 @@ O tema define:
 | **Fornecedores** | matriz spend × OTIF (bolha = pedidos, cor = risco) · radar de 4 pilares · ranking por score · mapa por UF · tabela detalhada |
 | **Prazos** | OTIF mensal com linha de meta · gauge de aderência · barras de atraso por categoria · histograma de atrasos · tabela de pedidos em aberto |
 | **Preços** | índice por categoria · variação 12m (barras divergentes) · série do item · monitor com impacto financeiro |
+| **Contratos** | cartões de vigentes/a vencer/vencidos com pedido · tabela de carteira (saldo, execução, reajuste, exposição) · alertas |
+| **Planejamento** | previsão de spend 3m (medidas DAX) · simulador de renegociação com parâmetros |
 
 ### Dicas de construção
 
@@ -119,3 +122,12 @@ Em um cenário real, mapeie o e-mail do usuário para `id_unidade` em uma tabela
 - Gateway padrão para PostgreSQL on-premises.
 - Atualização agendada 05:30, após o ETL (05:00).
 - Notificação de falha para o e-mail da equipe de Suprimentos.
+- Antes de publicar, rode `npm run test:sql` para reconciliar o modelo com `vw_kpi_geral`.
+
+## 9. PBIX demonstrativo
+
+O arquivo `.pbix` é gerado localmente a partir deste modelo e anexado a uma **release**
+(asset), nunca commitado. O passo a passo está em
+[`../docs/07-integracao-powerbi.md`](../docs/07-integracao-powerbi.md#7-pbix-demonstrativo).
+Para versionamento em texto, use um projeto **PBIP** com TMDL; o repositório já entrega
+DDL, Power Query M, DAX e tema, que são as fontes de verdade do modelo.

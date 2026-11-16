@@ -8,7 +8,12 @@ node_modules/
 # saídas do ETL / temporários
 etl/out/
 _tmp/
+_site/
 *.log
+
+# binários do Power BI (distribuir em release, não no Git)
+*.pbix
+*.pbit
 
 # SO / editor
 .DS_Store
