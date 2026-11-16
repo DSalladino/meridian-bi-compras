@@ -56,7 +56,13 @@ jobs:
       - name: Criar DDL
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/01_ddl.sql
       - name: Carga full
-        run: python etl/pipeline_etl.py --dsn "$DATABASE_URL" --mode full
+        run: |
+          set -o pipefail
+          if ! python etl/pipeline_etl.py --dsn "$DATABASE_URL" --mode full 2>&1 | tee etl-full.log; then
+            MSG=$(tail -n 15 etl-full.log | tr '\n' '~' | cut -c1-3500)
+            echo "::error title=ETL-TRACEBACK::$MSG"
+            exit 1
+          fi
       - name: Views e governança
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/02_views_kpi.sql
