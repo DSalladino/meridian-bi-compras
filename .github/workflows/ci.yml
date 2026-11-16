@@ -61,6 +61,8 @@ jobs:
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/02_views_kpi.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/04_governanca.sql
+      - name: Consultas analíticas (sql/03)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f sql/03_queries_analiticas.sql -o /dev/null
       - name: Reconciliar painel × SQL
         run: npm run test:sql
       - name: Carga incremental

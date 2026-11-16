@@ -53,8 +53,13 @@ npm run test:sql
 [`ci.yml`](../.github/workflows/ci.yml) tem dois jobs:
 
 1. **web** — Node 22, `npm test` e `npm run check`.
-2. **etl-sql** — PostgreSQL 16 como service, testes Python, DDL, carga full, views, `test:sql`,
-   carga incremental e validação do log/checklist.
+2. **etl-sql** — PostgreSQL 16 como service, testes Python, DDL, carga full, views, as 15
+   consultas analíticas de `sql/03_queries_analiticas.sql`, `test:sql`, carga incremental e
+   validação do log/checklist.
+
+O job também falha se uma coluna `NOT NULL` sem default ficar fora da lista de carga do ETL —
+proteção que existe desde que `dw.fato_cotacao.id_cotacao` (PK `IDENTITY`) quebrava a carga
+full no staging.
 
 A publicação da demonstração é feita por [`pages.yml`](../.github/workflows/pages.yml).
 
