@@ -215,9 +215,8 @@ A árvore completa de KPIs, fórmulas em SQL/DAX e decisões de definição est�
 ├── app/                  painel analítico (HTML/CSS/JS, sem dependências)
 │   ├── css/theme.css     design tokens pastel, componentes, impressão A4
 │   └── js/               dados, gráficos SVG, páginas, XLSX, PDF, upload
+│       └── kpi.js        regras canônicas de KPI (OTIF, score, contratos, previsão)
 ├── .github/workflows/   CI (Node + ETL + PostgreSQL) e publicação no GitHub Pages
-├── app/                 painel analítico (HTML/CSS/JS, sem dependências)
-│   └── js/kpi.js        regras canônicas de KPI (OTIF, score, contratos, previsão)
 ├── data/                dataset versionado (CSVs com separador ';')
 ├── dax/medidas.dax      medidas DAX do modelo Power BI
 ├── docs/                arquitetura, modelo, KPIs, decisões, testes e integração
