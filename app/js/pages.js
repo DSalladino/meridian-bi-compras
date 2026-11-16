@@ -6,7 +6,7 @@ import {
 import {
   store, periodBounds, prevBounds, applyFilters, monthsBetween, kpis, spendByMonth,
   budgetByMonth, byCategory, supplierScorecards, priceStats, priceIndexSeries,
-  quoteStats, validSpend, delivered, uploadsCount,
+  quoteStats, validSpend, delivered, storedUploadsCount, DATA_MODES,
 } from "./data.js";
 import { lineChart, barChart, hbar, donut, scatter, heatmap, radar, gauge, divergingBars, legend } from "./charts.js";
 
@@ -52,7 +52,7 @@ function scoreBar(score) {
 /* ------------------------------- contexto -------------------------------- */
 export function buildContext() {
   const f = store.filters;
-  const b = periodBounds(f.period, store.maxDate, f);
+  const b = periodBounds(f.period, store.maxDate, f, store.minDate);
   const flt = { ...f, from: b.from, to: b.to };
   const cur = applyFilters(store.fato.pedidos, store.fato.cotacoes, flt);
   const pb = prevBounds(b.from, b.to);
@@ -77,8 +77,29 @@ export function buildContext() {
   return ui.ctx;
 }
 
+function emptyPage({ title, text, icon = "◌" }) {
+  const demo = store.mode !== "demo";
+  return `<div class="card empty-state">
+    <div class="empty-ico" aria-hidden="true">${icon}</div>
+    <h3>${esc(title)}</h3>
+    <p>${esc(text)}</p>
+    <div class="empty-actions">
+      ${demo ? `<button class="btn btn-primary" data-action="restore-demo">Restaurar dataset demo</button>` : ""}
+      <a class="btn btn-ghost" data-page="dados" href="#dados">Ir para Dados &amp; importação</a>
+    </div>
+    <div class="tiny muted">Fonte atual: <strong>${esc(DATA_MODES[store.mode]?.label || store.mode)}</strong></div>
+  </div>`;
+}
+
 /* ------------------------------ visão executiva --------------------------- */
 function pageExec(c) {
+  if (!c.pedidos.length) {
+    return emptyPage({
+      title: "Nenhum pedido no período filtrado",
+      text: "A base está vazia ou os filtros não retornaram registros. Restaure o dataset de demonstração ou importe pedidos para visualizar os indicadores.",
+      icon: "▤",
+    });
+  }
   const { k, cats, months, spendSeries, budgetM, prices, monthly } = c;
   const adher = k.adherence || 0;
   const deltaSpend = k.spendDelta;
@@ -160,6 +181,13 @@ function buildInsights(c) {
 
 /* --------------------------- cotações & economia -------------------------- */
 function pageCotacoes(c) {
+  if (!c.cotacoes.length) {
+    return emptyPage({
+      title: "Nenhuma cotação no período",
+      text: "Este modo de dados não possui propostas de negociação. Importe pedidos com requisições ou restaure o dataset demo para analisar o funil de cotações.",
+      icon: "◇",
+    });
+  }
   const { quotes: q, cats, months, k } = c;
   const savingsByCat = cats.map((x) => ({ label: x.nome, value: x.saving, tip: `${brl(x.saving)} · ${pct(x.savingRate)} do spend`, color: PALETTE.mint }));
   const topItems = [...new Map(c.pedidos.map((p) => [p.id_item, { label: p.item?.descricao || p.id_item, value: 0, qty: 0 }])).values()];
@@ -240,6 +268,13 @@ function pageCotacoes(c) {
 /* ------------------------------- fornecedores ----------------------------- */
 function pageFornecedores(c) {
   const { k, suppliers } = c;
+  if (!suppliers.length) {
+    return emptyPage({
+      title: "Nenhum fornecedor com pedidos no período",
+      text: "O scorecard depende de pedidos válidos. Ajuste os filtros ou carregue uma base com movimentação.",
+      icon: "◍",
+    });
+  }
   const focus = suppliers.find((s) => s.id === ui.supplier) || suppliers[0];
   const medianSpend = median(suppliers, (s) => s.spend);
   const medianOtif = median(suppliers, (s) => s.otif);
@@ -334,6 +369,13 @@ function pageFornecedores(c) {
 /* --------------------------------- prazos --------------------------------- */
 function pagePrazos(c) {
   const { k, cats, months } = c;
+  if (!c.pedidos.length) {
+    return emptyPage({
+      title: "Nenhum pedido para analisar prazos",
+      text: "Sem pedidos não é possível calcular OTIF, atraso ou lead time. Restaure o dataset demo ou importe uma base de pedidos.",
+      icon: "◷",
+    });
+  }
   const del = c.pedidos.filter(delivered);
   const buckets = [0, 1, 3, 7, 15, 30];
   const dist = buckets.map((b, i) => {
@@ -424,6 +466,13 @@ function priceCatSeries(c) {
 
 function pagePrecos(c) {
   const { prices } = c;
+  if (!prices.items.length) {
+    return emptyPage({
+      title: "Nenhuma série de preços disponível",
+      text: "A base atual não possui histórico de preços por item. Restaure o dataset demo para visualizar índices e reajustes.",
+      icon: "↗",
+    });
+  }
   const focus = prices.items.find((i) => i.id === ui.item) || prices.items[0];
   const series = focus ? focus.serie.filter((s) => c.months.includes(s.mes)) : [];
   const catSeries = priceCatSeries(c);
@@ -494,7 +543,25 @@ function pageDados(c) {
     ["fato_precos", "Série mensal de preços por item", store.fato.precos.length, "id_item + mes_ref", "gold"],
     ["fato_orcamento", "Orçamento e forecast por categoria/unidade", store.fato.orcamento.length, "mes_ref + categoria", "gold"],
   ];
+  const mode = DATA_MODES[store.mode] || DATA_MODES.demo;
+  const modeCards = Object.entries(DATA_MODES).map(([id, m]) => `
+    <button class="mode-option ${store.mode === id ? "active" : ""}" data-action="set-mode" data-mode="${id}" aria-pressed="${store.mode === id}">
+      <span class="mode-radio" aria-hidden="true"></span>
+      <span><strong>${esc(m.label)}</strong><small>${esc(m.description)}</small></span>
+    </button>`).join("");
+
   return `<div class="grid">
+    ${card("col-12", "Ambiente de dados", "Escolha a origem exibida no painel · a preferência fica salva neste navegador",
+      `<div class="mode-options">${modeCards}</div>
+      <div class="mode-bar">
+        <div class="tiny muted">Fonte ativa: <strong>${esc(mode.label)}</strong> · ${num(store.fato.pedidos.length)} pedidos · ${num(store.fato.cotacoes.length)} cotações · ${num(store.fato.precos.length)} preços</div>
+        <div class="mode-actions">
+          ${store.mode !== "empty" ? `<button class="btn btn-sm btn-danger-ghost" data-action="empty-data">Zerar fatos</button>` : ""}
+          ${store.mode !== "demo" ? `<button class="btn btn-sm" data-action="restore-demo">Restaurar demo</button>` : ""}
+        </div>
+      </div>
+      ${store.persistError ? `<div class="notice bad tiny">Não foi possível salvar as importações no navegador (cota do localStorage). Os dados continuam em memória até recarregar a página.</div>` : ""}
+      <p class="tiny muted" style="margin:10px 0 0">A base vazia mantém ${num(store.dim.fornecedores.length)} fornecedores, ${num(store.dim.itens.length)} itens e os demais cadastros. Assim é possível importar pedidos sobre um cadastro válido e demonstrar o painel sem resultados.</p>`)}
     ${card("col-7", "Importar dados", "CSV com separador ; ou , · pedidos de compra no formato do modelo",
       `<div class="drop" id="drop">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
@@ -506,7 +573,7 @@ function pageDados(c) {
       <div class="hdivider"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" data-action="download-template">Baixar modelo CSV</button>
-        <button class="btn btn-sm btn-ghost" data-action="clear-uploads">Remover importações (${uploadsCount()})</button>
+        <button class="btn btn-sm btn-ghost" data-action="clear-uploads">Remover importações (${storedUploadsCount()})</button>
       </div>
       <p class="tiny muted" style="margin:10px 0 0">A importação valida colunas obrigatórias, tipos, datas, chaves de dimensão e duplicidades. Registros com o mesmo <span class="mono">id_pedido</span> são atualizados; os demais são incluídos e recalculam todos os indicadores.</p>`)}
     ${card("col-5", "Qualidade e atualização", "Resumo da camada analítica",
@@ -514,8 +581,9 @@ function pageDados(c) {
         <div class="srow"><span>Competência mais recente</span><strong>${monthLabel(store.maxDate.slice(0, 7), true)}</strong></div>
         <div class="srow"><span>Pedidos na base</span><strong class="num">${num(store.fato.pedidos.length)}</strong></div>
         <div class="srow"><span>Cotações na base</span><strong class="num">${num(store.fato.cotacoes.length)}</strong></div>
-        <div class="srow"><span>Importações locais</span><strong class="num">${uploadsCount()}</strong></div>
+        <div class="srow"><span>Importações locais</span><strong class="num">${storedUploadsCount()}</strong></div>
         <div class="srow"><span>Última carga</span><strong>${store.loadedAt ? store.loadedAt.toLocaleString("pt-BR") : "—"}</strong></div>
+        <div class="srow"><span>Fonte de dados</span><strong>${esc(DATA_MODES[store.mode]?.label || store.mode)}</strong></div>
       </div>
       <div class="hdivider"></div>
       <div class="tiny muted">Pipeline: <span class="mono">extract → validate → transform → load (gold)</span>. O dataset versionado em <span class="mono">/data</span> é gerado de forma determinística (seed fixa), permitindo reprodutibilidade.</div>`)}

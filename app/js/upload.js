@@ -1,6 +1,6 @@
 /* Importação de CSV com validação e recálculo dos indicadores. */
 import { parseCSV, esc, num, brl, dateBR, toast, download, toCSV } from "./util.js";
-import { store, addUploadedOrders, clearUploads, uploadsCount } from "./data.js";
+import { store, addUploadedOrders, clearUploads, storedUploadsCount } from "./data.js";
 
 const REQUIRED = ["id_pedido", "data_emissao", "id_fornecedor", "id_categoria", "id_item", "id_unidade", "quantidade", "valor_unitario", "valor_total", "status"];
 const STATUS = ["Entregue", "Em trânsito", "Parcial", "Atrasado", "Cancelado"];
@@ -36,7 +36,10 @@ export function validateCSV(text, filename) {
   if (errors.length) return { errors, warnings, rows: [], header, filename };
 
   const maxDate = store.maxDate;
-  const minDate = "2023-01-01";
+  const minDate = store.minDate || "2000-01-01";
+  const now = new Date();
+  const maxAllowed = new Date(Date.UTC(now.getUTCFullYear() + 2, now.getUTCMonth(), now.getUTCDate()))
+    .toISOString().slice(0, 10);
   const seen = new Set();
   const out = [];
 
@@ -51,7 +54,7 @@ export function validateCSV(text, filename) {
 
     const data = normDate(o.data_emissao);
     if (!data) { errors.push(`Linha ${line}: data_emissao inválida.`); return; }
-    if (data < minDate || data > "2027-12-31") warnings.push(`Linha ${line}: data fora da janela histórica (${dateBR(data)}).`);
+    if (data < minDate || data > maxAllowed) warnings.push(`Linha ${line}: data fora da janela histórica (${dateBR(data)}).`);
 
     if (!store.idx.fById.has(o.id_fornecedor)) errors.push(`Linha ${line}: fornecedor inexistente (${o.id_fornecedor}).`);
     if (!store.idx.cById.has(o.id_categoria)) errors.push(`Linha ${line}: categoria inexistente (${o.id_categoria}).`);
@@ -77,7 +80,10 @@ export function validateCSV(text, filename) {
     const real = normDate(o.data_entrega_real);
     const atraso = real && prev ? Math.max(0, Math.round((new Date(real) - new Date(prev)) / 864e5)) : 0;
     const item = store.idx.iById.get(o.id_item);
-    const ref = item?.preco_referencia || unit;
+    const ref = normNum(o.preco_referencia) || item?.preco_referencia || unit;
+    const received = normNum(o.qtd_recebida) || (status === "Entregue" || status === "Atrasado" ? qtd : 0);
+    const defects = normNum(o.qtd_defeito) || 0;
+    const otif = status === "Entregue" && atraso === 0 && defects === 0 && received >= qtd ? 1 : 0;
     const mes = data.slice(0, 7);
 
     out.push({
@@ -91,14 +97,14 @@ export function validateCSV(text, filename) {
       valor_total: total,
       frete: normNum(o.frete) || 0,
       preco_referencia: ref,
-      saving_valor: Math.max(0, (ref - unit) * qtd),
+      saving_valor: (ref - unit) * qtd,
       tem_contrato: Number(o.tem_contrato) === 1 ? 1 : 0,
       data_entrega_prevista: prev,
       data_entrega_real: real,
       atraso_dias: atraso,
-      qtd_recebida: normNum(o.qtd_recebida) || (status === "Entregue" || status === "Atrasado" ? qtd : 0),
-      qtd_defeito: normNum(o.qtd_defeito) || 0,
-      otif: status === "Entregue" && atraso === 0 ? 1 : 0,
+      qtd_recebida: received,
+      qtd_defeito: defects,
+      otif,
       nota_qualidade: normNum(o.nota_qualidade) || 4,
       status,
       modalidade: o.modalidade || "Importado",
@@ -148,11 +154,16 @@ function handleFile(file, onChange) {
 export const TEMPLATE_HEADER = [
   "id_pedido", "id_requisicao", "data_emissao", "id_fornecedor", "id_item", "id_categoria",
   "id_comprador", "id_unidade", "quantidade", "valor_unitario", "frete", "valor_total",
-  "status", "data_entrega_prevista", "data_entrega_real", "qtd_recebida", "qtd_defeito", "tem_contrato",
+  "preco_referencia", "status", "data_entrega_prevista", "data_entrega_real", "qtd_recebida", "qtd_defeito", "tem_contrato",
 ];
 
+function addDaysISO(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 let clickBound = false;
-let dropBound = false;
 
 export function initUpload(onChange) {
   const input = document.getElementById("file-input");
@@ -160,14 +171,23 @@ export function initUpload(onChange) {
 
   if (!clickBound) document.addEventListener("click", (e) => {
     const action = e.target.closest("[data-action]")?.dataset.action;
-    if (action === "pick-file") { input?.click(); }
+    if (action === "pick-file") { document.getElementById("file-input")?.click(); }
     if (action === "download-template") {
+      const itemA = store.dim.itens[0];
+      const itemB = store.dim.itens[1] || itemA;
+      const fornA = store.dim.fornecedores[0];
+      const fornB = store.dim.fornecedores[1] || fornA;
+      const comp = store.dim.compradores[0];
+      const unit = store.dim.unidades[0];
+      const base = store.maxDate || new Date().toISOString().slice(0, 10);
+      const d1 = addDaysISO(base, -12);
+      const d2 = addDaysISO(base, -9);
       const example = [
-        ["PO-2026-09999", "REQ-202610901", "2026-10-15", "F001", "I001", "K1", "C1", "U1", 2500, 7.12, 180, 17980, "Entregue", "2026-10-28", "2026-10-27", 2500, 0, 1],
-        ["PO-2026-10000", "REQ-202610902", "2026-10-18", "F015", "I006", "K2", "C2", "U1", 40, 139.9, 0, 5596, "Em trânsito", "2026-11-04", "", 0, 0, 0],
+        [`PO-IMP-${d1.replaceAll("-", "")}-1`, `REQ-IMP-${d1.replaceAll("-", "")}-1`, d1, fornA.id_fornecedor, itemA.id_item, itemA.id_categoria, comp.id_comprador, unit.id_unidade, 2500, 7.12, 180, 17980, itemA.preco_referencia, "Entregue", addDaysISO(d1, 10), addDaysISO(d1, 9), 2500, 0, 1],
+        [`PO-IMP-${d2.replaceAll("-", "")}-2`, `REQ-IMP-${d2.replaceAll("-", "")}-2`, d2, fornB.id_fornecedor, itemB.id_item, itemB.id_categoria, comp.id_comprador, unit.id_unidade, 40, 139.9, 0, 5596, itemB.preco_referencia, "Em trânsito", addDaysISO(d2, 14), "", 0, 0, 0],
       ];
       download("modelo_importacao_pedidos.csv", "\uFEFF" + toCSV(TEMPLATE_HEADER, example));
-      toast("Modelo CSV baixado.", "good");
+      toast("Modelo CSV baixado com datas e chaves da base atual.", "good");
     }
     if (action === "apply-upload") {
       if (!pending) return;
@@ -182,15 +202,15 @@ export function initUpload(onChange) {
       if (el) el.innerHTML = "";
     }
     if (action === "clear-uploads") {
-      if (!uploadsCount()) { toast("Nenhuma importação local para remover."); return; }
+      if (!storedUploadsCount()) { toast("Nenhuma importação local para remover."); return; }
       clearUploads();
       toast("Importações locais removidas.");
       onChange?.();
     }
   }), clickBound = true;
 
-  if (!drop || !input || dropBound) return;
-  dropBound = true;
+  if (!drop || !input || drop.dataset.bound === "1") return;
+  drop.dataset.bound = "1";
   drop.addEventListener("click", (e) => { if (!e.target.closest("button")) input.click(); });
   drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));

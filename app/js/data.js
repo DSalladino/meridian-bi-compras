@@ -14,11 +14,79 @@ const FILES = {
   orcamento: ["fato_orcamento.csv", ["orcamento", "forecast"]],
 };
 
+/* ------------------------------- modos de dados --------------------------- */
+export const DATA_MODES = {
+  demo: {
+    label: "Dataset demo",
+    short: "demo",
+    description: "Dataset versionado de 34 meses, com uploads locais aplicados.",
+  },
+  empty: {
+    label: "Base vazia",
+    short: "vazia",
+    description: "Mantém dimensões e cadastros, sem pedidos, cotações, preços ou orçamento.",
+  },
+  uploads: {
+    label: "Somente importações",
+    short: "importações",
+    description: "Usa apenas os pedidos importados neste navegador, sobre as dimensões da base.",
+  },
+};
+const MODE_KEY = "meridian.dataMode.v1";
+const UPLOAD_KEY = "meridian.uploads.v1";
+
+function readMode() {
+  try {
+    const saved = localStorage.getItem(MODE_KEY);
+    return DATA_MODES[saved] ? saved : "demo";
+  } catch { return "demo"; }
+}
+
+export function setDataMode(mode) {
+  const next = DATA_MODES[mode] ? mode : "demo";
+  store.mode = next;
+  try { localStorage.setItem(MODE_KEY, next); } catch { /* noop */ }
+  return next;
+}
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const monthEnd = (ym) => {
+  if (!ym) return "";
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+};
+
+function latestFactDate() {
+  const dates = [
+    ...store.fato.pedidos.map((p) => p.data_emissao),
+    ...store.fato.cotacoes.map((q) => q.data_cotacao),
+    ...store.fato.precos.map((p) => monthEnd(p.mes_ref)),
+    ...store.fato.orcamento.map((o) => monthEnd(o.mes_ref)),
+  ].filter(Boolean).sort();
+  return dates[dates.length - 1] || todayISO();
+}
+
+function earliestFactDate() {
+  const dates = [
+    ...store.fato.pedidos.map((p) => p.data_emissao),
+    ...store.fato.cotacoes.map((q) => q.data_cotacao),
+    ...store.fato.precos.map((p) => `${p.mes_ref}-01`),
+    ...store.fato.orcamento.map((o) => `${o.mes_ref}-01`),
+  ].filter(Boolean).sort();
+  if (dates.length) return dates[0];
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() - 3);
+  return d.toISOString().slice(0, 10);
+}
+
 export const store = {
   dim: {}, fato: {}, filters: {},
-  maxDate: "2026-10-31",
+  mode: readMode(),
+  maxDate: todayISO(),
+  minDate: todayISO(),
   source: "gold",
   loadedAt: null,
+  persistError: false,
   extra: { pedidos: [] },
 };
 
@@ -35,7 +103,8 @@ function toObjects(text, numeric) {
   });
 }
 
-export async function loadData() {
+export async function loadData(mode = store.mode) {
+  const nextMode = DATA_MODES[mode] ? mode : "demo";
   const entries = Object.entries(FILES);
   const texts = await Promise.all(entries.map(async ([key, [file]]) => {
     const res = await fetch(`../data/${file}`, { cache: "no-store" });
@@ -53,15 +122,27 @@ export async function loadData() {
     fornecedores: raw.fornecedores,
     contratos: raw.contratos,
   };
-  store.fato = {
-    pedidos: raw.pedidos,
-    cotacoes: raw.cotacoes,
-    precos: raw.precos,
-    orcamento: raw.orcamento,
-  };
-  const saved = restoreUploads();
-  if (saved.length) store.fato.pedidos.push(...saved);
-  store.maxDate = store.fato.pedidos.reduce((m, p) => (p.data_emissao > m ? p.data_emissao : m), "2024-01-01");
+
+  const includeDemoFacts = nextMode === "demo";
+  const includeUploads = nextMode === "demo" || nextMode === "uploads";
+  store.fato = includeDemoFacts
+    ? {
+      pedidos: raw.pedidos,
+      cotacoes: raw.cotacoes,
+      precos: raw.precos,
+      orcamento: raw.orcamento,
+    }
+    : { pedidos: [], cotacoes: [], precos: [], orcamento: [] };
+
+  store.persistError = false;
+  if (includeUploads) {
+    const saved = restoreUploads();
+    if (saved.length) store.fato.pedidos.push(...saved);
+  }
+
+  setDataMode(nextMode);
+  store.maxDate = latestFactDate();
+  store.minDate = earliestFactDate();
   store.loadedAt = new Date();
   buildIndex();
   return store;
@@ -98,7 +179,7 @@ export function defaultFilters() {
   return { period: "12", from: "", to: "", unidade: "", categoria: "", comprador: "", fornecedor: "", status: "" };
 }
 
-export function periodBounds(period, maxDate, custom = {}) {
+export function periodBounds(period, maxDate, custom = {}, minDate = "2020-01-01") {
   const maxYm = maxDate.slice(0, 7);
   const [y, m] = maxYm.split("-").map(Number);
   const endOfMonth = (yy, mm) => new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0, 10);
@@ -106,7 +187,7 @@ export function periodBounds(period, maxDate, custom = {}) {
     const d = new Date(Date.UTC(y, m - 1 + n, 1));
     return d.toISOString().slice(0, 7);
   };
-  if (period === "all") return { from: "2020-01-01", to: endOfMonth(y, m), months: null };
+  if (period === "all") return { from: minDate || "2020-01-01", to: endOfMonth(y, m), months: null };
   if (period === "ytd") return { from: `${y}-01-01`, to: endOfMonth(y, m), months: m };
   if (period === "custom") return { from: custom.from || `${shift(-11)}-01`, to: custom.to || endOfMonth(y, m), months: null };
   const n = Number(period) || 12;
@@ -132,11 +213,29 @@ export function applyFilters(pedidos, cotacoes, f) {
     (!f.fornecedor || p.id_fornecedor === f.fornecedor) &&
     (!f.status || p.status === f.status)
   );
-  const cot = cotacoes.filter((q) =>
-    inRange(q.data_cotacao) &&
-    (!f.categoria || q.id_categoria === f.categoria) &&
-    (!f.fornecedor || q.id_fornecedor === f.fornecedor)
-  );
+
+  // Cotações não têm unidade/comprador/status próprios: herdam do pedido
+  // gerado pela requisição quando o filtro exige esse contexto.
+  const reqMeta = new Map();
+  for (const p of pedidos) {
+    if (!p.id_requisicao) continue;
+    const prev = reqMeta.get(p.id_requisicao) || {};
+    reqMeta.set(p.id_requisicao, {
+      id_unidade: prev.id_unidade || p.id_unidade,
+      id_comprador: prev.id_comprador || p.id_comprador,
+      status: prev.status || p.status,
+    });
+  }
+  const cot = cotacoes.filter((q) => {
+    if (!inRange(q.data_cotacao)) return false;
+    if (f.categoria && q.id_categoria !== f.categoria) return false;
+    if (f.fornecedor && q.id_fornecedor !== f.fornecedor) return false;
+    const meta = reqMeta.get(q.id_requisicao);
+    if (f.unidade && meta?.id_unidade !== f.unidade) return false;
+    if (f.comprador && meta?.id_comprador !== f.comprador) return false;
+    if (f.status && meta?.status !== f.status) return false;
+    return true;
+  });
   return { pedidos: ped, cotacoes: cot };
 }
 
@@ -374,22 +473,39 @@ export function quoteStats(cotacoes, pedidos) {
 }
 
 /* ----------------------------- uploads locais ----------------------------- */
-const LS_KEY = "meridian.uploads.v1";
 
 function restoreUploads() {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(UPLOAD_KEY);
     if (!raw) return [];
     const rows = JSON.parse(raw);
     return Array.isArray(rows) ? rows.map((r) => ({ ...r, __upload: true })) : [];
   } catch { return []; }
 }
 
+/** Remove objetos de dimensão e campos derivados antes de persistir. */
+function persistableOrder(p) {
+  const {
+    fornecedor, categoria, item, unidade, comprador,
+    mes, ano, __upload, ...rest
+  } = p;
+  return rest;
+}
+
 function persistUploads() {
   try {
-    const rows = store.fato.pedidos.filter((p) => p.__upload).slice(-4000);
-    localStorage.setItem(LS_KEY, JSON.stringify(rows));
-  } catch { /* quota — mantém apenas em memória */ }
+    const rows = store.fato.pedidos
+      .filter((p) => p.__upload)
+      .slice(-4000)
+      .map(persistableOrder);
+    localStorage.setItem(UPLOAD_KEY, JSON.stringify(rows));
+    store.persistError = false;
+    return true;
+  } catch {
+    // Cota excedida: mantém em memória e informa a interface.
+    store.persistError = true;
+    return false;
+  }
 }
 
 /** Substitui por id_pedido ou acrescenta; devolve {novos, atualizados}. */
@@ -402,19 +518,36 @@ export function addUploadedOrders(rows) {
     else { store.fato.pedidos.push(p); novos++; }
   }
   if (rows.length) {
-    store.maxDate = store.fato.pedidos.reduce((m, p) => (p.data_emissao > m ? p.data_emissao : m), store.maxDate);
+    store.maxDate = latestFactDate();
+    store.minDate = earliestFactDate();
     buildIndex();
     persistUploads();
+    // Base vazia + importação passa a ser uma base de importações.
+    if (store.mode === "empty") setDataMode("uploads");
   }
   return { novos, atualizados };
 }
 
 export function clearUploads() {
   store.fato.pedidos = store.fato.pedidos.filter((p) => !p.__upload);
-  try { localStorage.removeItem(LS_KEY); } catch { /* noop */ }
+  try { localStorage.removeItem(UPLOAD_KEY); } catch { /* noop */ }
+  store.persistError = false;
+  store.maxDate = latestFactDate();
+  store.minDate = earliestFactDate();
   buildIndex();
+  if (store.mode === "uploads") setDataMode("empty");
 }
 
 export function uploadsCount() {
   return store.fato.pedidos.filter((p) => p.__upload).length;
+}
+
+/** Quantidade de importações salvas, mesmo quando o modo atual não as carrega. */
+export function storedUploadsCount() {
+  try {
+    const raw = localStorage.getItem(UPLOAD_KEY);
+    if (!raw) return 0;
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch { return 0; }
 }

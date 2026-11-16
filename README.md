@@ -23,6 +23,7 @@ exportação em Excel/PDF e upload de dados.
 | **Dashboard** | SPA em HTML/CSS/JS puro (sem build), 6 páginas, 9 tipos de gráfico, filtros globais |
 | **Relatórios** | Excel nativo (`.xlsx`, 5 abas, formatação e filtros) e PDF A4 executivo |
 | **Ingestão** | Upload de CSV com validação de schema, chaves, tipos e regras de negócio |
+| **Modos de dados** | Dataset demo, base vazia e somente importações, com estados vazios reais e preferência salva |
 
 ---
 
@@ -62,6 +63,20 @@ http://localhost:4173/app/#dados upload, dicionário e exportações
 Filtros globais: período (com intervalo personalizado), unidade, categoria, comprador,
 fornecedor e status do pedido. Tudo recalcula na hora, inclusive os deltas contra o
 período anterior de mesmo tamanho.
+
+### Modos de dados (demo · vazia · importações)
+
+Na página **Dados & exportação** é possível alternar a fonte sem reiniciar o servidor:
+
+- **Dataset demo** — base versionada de 34 meses, com os uploads locais aplicados.
+- **Base vazia** — mantém dimensões e cadastros, zera pedidos, cotações, preços e orçamento.
+  Todas as páginas analíticas exibem um estado vazio com atalho para restaurar ou importar.
+- **Somente importações** — usa apenas os pedidos importados neste navegador.
+
+A escolha fica em `localStorage` (`meridian.dataMode.v1`). O botão **Zerar fatos** pede
+confirmação, mantém os uploads salvos e pode ser revertido com **Restaurar demo**. Para
+apagar também as importações, use **Remover importações**. A importação valida o arquivo,
+preserva as dimensões e passa automaticamente para o modo de importações.
 
 ---
 
@@ -153,15 +168,20 @@ Detalhamento e alternativas descartadas em [`docs/04-decisoes-tecnicas.md`](docs
   fontes e gráficos vetoriais sem servidor.
 - Uploads ficam no `localStorage` do navegador; o recálculo é imediato, mas não persiste em
   um banco. Em produção, o mesmo schema é carregado pelo pipeline Python.
+- O `server.js` é um servidor de demonstração: publica **apenas** `/app` e `/data`, aplica
+  cabeçalhos de segurança e bloqueia traversal/dotfiles. Ele **não implementa login**, RBAC
+  nem auditoria. Para exposição real, use a API autenticada descrita na próxima seção.
 
 ---
 
 ## Próximos passos sugeridos
 
-1. Publicar o modelo no Power BI Service com gateway para o PostgreSQL e atualização agendada.
-2. Adicionar **previsão de spend** (séries temporais) e simulação de cenários de renegociação.
-3. Integrar ERP (SAP/Oracle) via camada bronze e substituir o CSV pelo CDC.
-4. Criar alertas de reajuste acima do índice contratual e SLA de homologação de fornecedores.
+1. **Login e RBAC**: API com sessão `HttpOnly`, Argon2id/scrypt, papéis (admin, analista,
+   comprador, leitor), escopo por unidade/categoria, auditoria de exportações e uploads.
+2. Publicar o modelo no Power BI Service com gateway para o PostgreSQL e atualização agendada.
+3. Adicionar **previsão de spend** (séries temporais) e simulação de cenários de renegociação.
+4. Integrar ERP (SAP/Oracle) via camada bronze e substituir o CSV pelo CDC.
+5. Criar alertas de reajuste acima do índice contratual e SLA de homologação de fornecedores.
 
 ---
 

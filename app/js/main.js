@@ -1,7 +1,7 @@
 /* Bootstrap da aplicação: navegação, filtros globais e exportações. */
-import { store, loadData, defaultFilters, monthsBetween } from "./data.js";
+import { store, loadData, defaultFilters, DATA_MODES } from "./data.js";
 import { renderPage, ui, buildContext } from "./pages.js";
-import { bindTooltips, toast, monthLabel, dateBR, num } from "./util.js";
+import { bindTooltips, toast, monthLabel, dateBR, num, esc } from "./util.js";
 import { exportExcel, exportPDF, exportPedidos, exportCotacoes } from "./report.js";
 import { initUpload } from "./upload.js";
 
@@ -19,6 +19,7 @@ const $ = (id) => document.getElementById(id);
 
 function populateFilters() {
   const mk = (sel, items, value, labelFn) => {
+    sel.querySelectorAll("option:not(:first-child)").forEach((o) => o.remove());
     sel.insertAdjacentHTML("beforeend", items.map((x) => `<option value="${x[value]}">${labelFn(x)}</option>`).join(""));
   };
   mk($("f-unidade"), store.dim.unidades, "id_unidade", (u) => `${u.unidade}`);
@@ -55,7 +56,7 @@ function buildPeriodPreview(period) {
   const max = store.maxDate.slice(0, 7);
   const [y, m] = max.split("-").map(Number);
   const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-  if (period === "all") return { from: "2024-01-01", to: end };
+  if (period === "all") return { from: store.minDate || `${y - 3}-01-01`, to: end };
   if (period === "ytd") return { from: `${y}-01-01`, to: end };
   const n = Number(period) || 12;
   const start = new Date(Date.UTC(y, m - 1 - (n - 1), 1)).toISOString().slice(0, 7);
@@ -63,12 +64,39 @@ function buildPeriodPreview(period) {
 }
 
 function updateSidebar() {
-  const f = store.filters;
-  const first = store.fato.pedidos.reduce((m, p) => (p.data_emissao < m ? p.data_emissao : m), store.maxDate);
-  $("src-status").textContent = `Dataset carregado · ${num(store.fato.pedidos.length)} pedidos`;
-  $("src-detail").innerHTML = `Base ${monthLabel(first.slice(0, 7))} → ${monthLabel(store.maxDate.slice(0, 7))}<br />Última carga ${store.loadedAt ? store.loadedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"} · camada gold`;
-  const pills = document.querySelectorAll(".chip[data-filter]");
-  pills.forEach((p) => p.remove());
+  const mode = DATA_MODES[store.mode] || DATA_MODES.demo;
+  const orders = store.fato.pedidos.length;
+  $("src-status").textContent = orders
+    ? `${mode.label} · ${num(orders)} pedidos`
+    : `${mode.label} · sem resultados`;
+  const range = orders || store.fato.precos.length || store.fato.orcamento.length
+    ? `Base ${monthLabel(store.minDate.slice(0, 7))} → ${monthLabel(store.maxDate.slice(0, 7))}`
+    : "Nenhum fato carregado";
+  $("src-detail").innerHTML = `${range}<br />Última carga ${store.loadedAt ? store.loadedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"} · fonte ${esc(mode.short)}`;
+}
+
+function hasFacts() {
+  return store.fato.pedidos.length > 0 || store.fato.cotacoes.length > 0 || store.fato.precos.length > 0;
+}
+
+function resetFilters() {
+  store.filters = defaultFilters();
+  ["f-unidade", "f-categoria", "f-comprador", "f-fornecedor", "f-status"].forEach((id) => { if ($(id)) $(id).value = ""; });
+  if ($("f-periodo")) $("f-periodo").value = "12";
+  toggleCustomDates();
+}
+
+async function applyDataMode(mode, successMessage) {
+  try {
+    await loadData(mode);
+    resetFilters();
+    populateFilters();
+    refresh();
+    toast(successMessage || `Fonte alterada para ${DATA_MODES[store.mode].label}.`, "good");
+  } catch (err) {
+    console.error(err);
+    toast(`Falha ao alterar a fonte: ${err.message}`, "bad");
+  }
 }
 
 function refresh() {
@@ -78,7 +106,7 @@ function refresh() {
     if (current === "dados") initUpload(() => refresh());
   } catch (err) {
     console.error(err);
-    $(`page-${current}`).innerHTML = `<div class="card"><div class="empty">Erro ao renderizar a página: ${err.message}</div></div>`;
+    $(`page-${current}`).innerHTML = `<div class="card"><div class="empty">Erro ao renderizar a página: ${esc(err.message)}</div></div>`;
   }
 }
 
@@ -95,6 +123,11 @@ function navigate(page) {
 }
 
 function wire() {
+  window.addEventListener("hashchange", () => {
+    const page = location.hash.replace("#", "");
+    if (PAGES[page] && page !== current) navigate(page);
+  });
+
   document.querySelectorAll("[data-page]").forEach((a) => {
     a.addEventListener("click", (e) => {
       e.preventDefault();
@@ -121,19 +154,21 @@ function wire() {
     const btn = $("btn-refresh");
     btn.disabled = true;
     try {
-      await loadData();
+      await loadData(store.mode);
       refresh();
-      toast("Dados recarregados da camada gold.", "good");
+      toast(`Dados recarregados · ${DATA_MODES[store.mode].label}.`, "good");
     } catch (e) { toast(`Falha ao recarregar: ${e.message}`, "bad"); }
     btn.disabled = false;
   });
 
   $("btn-xlsx").addEventListener("click", () => {
+    if (!hasFacts()) { toast("Sem dados para exportar. Gere ou importe uma base.", "bad"); return; }
     try { exportExcel(buildContext()); toast("Excel gerado com 5 abas.", "good"); }
     catch (e) { console.error(e); toast("Falha ao gerar Excel.", "bad"); }
   });
 
   $("btn-pdf").addEventListener("click", () => {
+    if (!hasFacts()) { toast("Sem dados para gerar o relatório.", "bad"); return; }
     try { exportPDF(buildContext()); }
     catch (e) { console.error(e); toast("Falha ao gerar relatório.", "bad"); }
   });
@@ -143,17 +178,34 @@ function wire() {
     if (!btn) return;
     const a = btn.dataset.action;
     if (a === "focus-supplier") { ui.supplier = btn.dataset.id; navigate("fornecedores"); }
-    if (a === "export-xlsx") { exportExcel(buildContext()); toast("Excel gerado.", "good"); }
-    if (a === "export-pdf") { exportPDF(buildContext()); }
-    if (a === "export-pedidos") { exportPedidos(buildContext()); toast("CSV de pedidos gerado.", "good"); }
-    if (a === "export-cotacoes") { exportCotacoes(buildContext()); toast("CSV de cotações gerado.", "good"); }
-    if (a === "export-quotes") { exportCotacoes(buildContext()); toast("CSV de cotações gerado.", "good"); }
+    if (a === "set-mode") { applyDataMode(btn.dataset.mode); }
+    if (a === "restore-demo") { applyDataMode("demo", "Dataset demo restaurado."); }
+    if (a === "empty-data") {
+      if (!window.confirm("Zerar os fatos da base? As dimensões e os cadastros serão mantidos, e as importações salvas não serão apagadas. Esta ação pode ser desfeita restaurando o dataset demo.")) return;
+      applyDataMode("empty", "Base zerada. Dimensões preservadas.");
+    }
+    if (a === "export-xlsx") {
+      if (!hasFacts()) { toast("Sem dados para exportar.", "bad"); return; }
+      exportExcel(buildContext()); toast("Excel gerado.", "good");
+    }
+    if (a === "export-pdf") {
+      if (!hasFacts()) { toast("Sem dados para gerar o relatório.", "bad"); return; }
+      exportPDF(buildContext());
+    }
+    if (a === "export-pedidos") {
+      if (!store.fato.pedidos.length) { toast("Sem pedidos para exportar.", "bad"); return; }
+      exportPedidos(buildContext()); toast("CSV de pedidos gerado.", "good");
+    }
+    if (a === "export-cotacoes" || a === "export-quotes") {
+      if (!store.fato.cotacoes.length) { toast("Sem cotações para exportar.", "bad"); return; }
+      exportCotacoes(buildContext()); toast("CSV de cotações gerado.", "good");
+    }
   });
 }
 
 async function boot() {
   try {
-    await loadData();
+    await loadData(store.mode);
     store.filters = defaultFilters();
     populateFilters();
     bindTooltips(document);
@@ -164,7 +216,7 @@ async function boot() {
   } catch (err) {
     console.error(err);
     document.querySelector(".content").innerHTML = `<div class="card"><div class="empty">
-      <strong>Não foi possível carregar o dataset.</strong><br />${err.message}<br /><br />
+      <strong>Não foi possível carregar o dataset.</strong><br />${esc(err.message)}<br /><br />
       Execute <span class="mono">npm start</span> na raiz do projeto e abra <span class="mono">http://localhost:4173</span>.</div></div>`;
   }
 }
