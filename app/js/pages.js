@@ -10,6 +10,7 @@ import {
 } from "./data.js";
 import { forecastSpend, simulateRenegotiation, supplierClassification } from "./kpi.js";
 import { lineChart, barChart, hbar, donut, scatter, heatmap, radar, gauge, divergingBars, legend } from "./charts.js";
+import { renderAdmin } from "./admin.js";
 
 export const ui = { ctx: null, supplier: null, item: null, page: "exec" };
 
@@ -748,7 +749,8 @@ export function renderPage(page) {
         : page === "prazos" ? pagePrazos(c)
           : page === "precos" ? pagePrecos(c)
             : page === "contratos" ? pageContratos(c)
-              : pageDados();
+              : page === "admin" ? renderAdmin()
+                : pageDados();
   const el = document.getElementById(`page-${page}`);
   el.innerHTML = html;
   const picker = el.querySelector("#supplier-picker");

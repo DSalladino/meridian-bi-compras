@@ -3,6 +3,7 @@ import { brl, brlFull, num, pct, signedPct, dateBR, esc, PALETTE, nowStamp, down
 import { store, delivered } from "./data.js";
 import { lineChart, donut } from "./charts.js";
 import { buildXLSX } from "./xlsx.js";
+import { registrarExportacao } from "./audit.js";
 
 function brand() {
   return store.config?.empresa || { nome: "Grupo Meridian", marca: "Meridian BI" };
@@ -25,6 +26,7 @@ function filterSummary(c) {
 
 /* --------------------------------- Excel --------------------------------- */
 export function exportExcel(c) {
+  registrarExportacao("excel", c);
   const k = c.k;
   const resumo = [
     ["Spend no período", brlFull(k.spend), "Orçamento", brlFull(k.budget)],
@@ -104,6 +106,7 @@ export function exportExcel(c) {
 
 /* ---------------------------------- PDF ---------------------------------- */
 export function exportPDF(c) {
+  registrarExportacao("pdf", c);
   const k = c.k;
   const rep = document.getElementById("print-report");
   const topSup = c.suppliers.slice(0, 10);
@@ -220,6 +223,7 @@ export function exportPDF(c) {
 
 /* ---------------------------------- CSV ---------------------------------- */
 export function exportPedidos(c) {
+  registrarExportacao("csv_pedidos", c);
   const header = ["id_pedido", "data_emissao", "id_fornecedor", "fornecedor", "id_categoria", "categoria", "id_unidade", "valor_total", "saving_valor", "status", "data_entrega_prevista", "data_entrega_real", "atraso_dias", "otif"];
   const rows = c.pedidos.map((p) => [
     p.id_pedido, p.data_emissao, p.id_fornecedor, p.fornecedor?.razao_social || "", p.id_categoria,
@@ -230,6 +234,7 @@ export function exportPedidos(c) {
 }
 
 export function exportCotacoes(c) {
+  registrarExportacao("csv_cotacoes", c);
   const header = ["id_requisicao", "data_cotacao", "id_fornecedor", "fornecedor", "id_item", "item", "quantidade", "preco_unitario", "preco_referencia", "desvio_pct", "valor_total", "selecionada"];
   const rows = c.cotacoes.map((q) => [
     q.id_requisicao, q.data_cotacao, q.id_fornecedor, q.fornecedor?.razao_social || "", q.id_item,

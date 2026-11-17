@@ -4,6 +4,7 @@ import { renderPage, ui, buildContext } from "./pages.js";
 import { bindTooltips, toast, monthLabel, num, esc } from "./util.js";
 import { exportExcel, exportPDF, exportPedidos, exportCotacoes } from "./report.js";
 import { initUpload } from "./upload.js";
+import { initAdmin } from "./admin.js";
 
 const PAGES = {
   exec: ["Visão executiva", "Desempenho de compras, economia e fornecedores"],
@@ -13,6 +14,7 @@ const PAGES = {
   precos: ["Preços & reajustes", "Índices, variações e exposição a reajustes"],
   contratos: ["Contratos & riscos", "Vigências, saldo contratual, reajustes e exposição"],
   dados: ["Dados & exportação", "Ingestão, qualidade, dicionário e relatórios"],
+  admin: ["Administração", "Usuários, papéis, escopo e trilha de auditoria"],
 };
 
 let current = "exec";
@@ -24,6 +26,11 @@ function applyBranding() {
   if ($("brand-name")) $("brand-name").textContent = marca;
   if ($("brand-sub")) $("brand-sub").textContent = emp.subtitulo || "Procurement Suite";
   document.title = `${marca} · Compras & Fornecedores`;
+  const admin = store.api && store.usuario?.papel === "admin";
+  for (const id of ["nav-admin", "mnav-admin"]) {
+    const el = $(id);
+    if (el) el.style.display = admin ? "" : "none";
+  }
   const nome = store.usuario?.nome || store.usuario?.usuario;
   if (nome && $("session-user")) {
     $("session-user").style.display = "";
@@ -140,6 +147,7 @@ function refresh() {
     renderPage(current);
     annotateCharts();
     updateSidebar();
+    if (current === "admin") initAdmin();
     if (current === "dados") initUpload(async () => {
       // Em produção a importação é persistida no servidor: recarrega para
       // incorporar o arquivo importado antes de redesenhar a página.
@@ -155,6 +163,7 @@ function refresh() {
 
 function navigate(page) {
   if (!PAGES[page]) page = "exec";
+  if (page === "admin" && !(store.api && store.usuario?.papel === "admin")) page = "exec";
   current = page;
   ui.page = page;
   document.querySelectorAll("[data-page]").forEach((n) => n.classList.toggle("active", n.dataset.page === page));
@@ -265,7 +274,11 @@ async function boot() {
     wire();
     toggleCustomDates();
     const hash = location.hash.replace("#", "");
-    navigate(PAGES[hash] ? hash : "exec");
+    if (hash === "admin" && !(store.api && store.usuario?.papel === "admin")) {
+      navigate("exec");
+    } else {
+      navigate(PAGES[hash] ? hash : "exec");
+    }
   } catch (err) {
     console.error(err);
     document.querySelector(".content").innerHTML = `<div class="card"><div class="empty">

@@ -108,6 +108,9 @@ O repositório entrega **duas camadas de consumo** sobre o mesmo modelo semânti
 - Dados sintéticos no demo: não há PII real. Em produção, o servidor de login aplica RBAC e
   escopo por unidade/categoria/fornecedor na leitura dos fatos; para RLS no Power BI, use
   unidade/centro de custo como filtro de segurança.
+- Login local (scrypt + cookie HMAC) e SSO OIDC com PKCE; a tela de administração cria
+  usuários, altera papéis/escopo e consulta a auditoria. Exportações Excel/PDF/CSV também
+  são registradas. HTTPS fica a cargo do proxy reverso (`deploy/`).
 - No modo demo o upload fica no navegador. No modo produção, o CSV é validado no servidor,
   gravado atomicamente em `data/imported/`, com backup e registro em `logs/auditoria.jsonl`.
 
@@ -131,6 +134,5 @@ compartilhada e auditoria no painel web, sem substituir a camada PostgreSQL.
 
 - Camada **bronze** com ingestão direta do ERP (CDC) e **silver** com deduplicação.
 - *Feature store* de fornecedores para modelo de risco (prazo × qualidade × financeiro).
-- Publicação do painel como app interno com SSO e trilha de auditoria (login local já
-  implementado; SSO/OIDC é o próximo passo).
+- MFA/TOTP para contas locais e *single logout* federado (SSO OIDC já implementado).
 - Multiempresa por linha (`id_empresa`) para grupos com vários CNPJs no mesmo banco.

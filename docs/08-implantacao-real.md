@@ -206,23 +206,84 @@ node scripts/usuarios.mjs listar
 
 ---
 
+### Administração no produto
+
+Usuários com papel `admin` veem o item **Administração** no menu. A tela permite:
+
+- criar usuário local (senha digitada ou gerada e exibida uma única vez);
+- alterar nome, papel, status e escopo por unidade/categoria/fornecedor;
+- redefinir senha (invalida sessões antigas) e desativar usuário;
+- consultar os últimos eventos de auditoria, incluindo exportações.
+
+O último administrador ativo não pode ser removido, rebaixado ou desativado — a API
+responde `409` e a ação fica registrada.
+
+### SSO com OpenID Connect
+
+O login local continua disponível como contingência. Para habilitar o botão **Entrar com
+SSO**, configure o provedor e o redirect URI:
+
+```bash
+MERIDIAN_PUBLIC_URL=https://bi.suaempresa.com
+MERIDIAN_OIDC_ISSUER=https://login.microsoftonline.com/<tenant>/v2.0
+MERIDIAN_OIDC_CLIENT_ID=<application-id>
+MERIDIAN_OIDC_CLIENT_SECRET=<secret>          # omita em client público com PKCE
+MERIDIAN_OIDC_REDIRECT_URI=https://bi.suaempresa.com/auth/oidc/callback
+MERIDIAN_OIDC_ROLE_CLAIM=roles
+MERIDIAN_OIDC_ROLE_MAP='{"Meridian-Admins":"admin","Meridian-Analysts":"analista"}'
+MERIDIAN_OIDC_ADMIN_ROLES=meridian-admin
+MERIDIAN_OIDC_DEFAULT_ROLE=leitor
+MERIDIAN_OIDC_AUTO_PROVISION=1
+```
+
+Exemplos de provedor:
+
+| Provedor | Issuer | Observação |
+| --- | --- | --- |
+| Azure AD / Entra ID | `https://login.microsoftonline.com/<tenant>/v2.0` | use App Roles e `MERIDIAN_OIDC_ROLE_CLAIM=roles` |
+| Google Workspace | `https://accounts.google.com` | papéis por `MERIDIAN_OIDC_ADMINS` ou grupo via claim customizada |
+| Keycloak | `https://<host>/realms/<realm>` | client confidencial; `realm_access.roles` é lido como fallback |
+| Okta / Authentik | issuer do app | mapeie grupos com `MERIDIAN_OIDC_ROLE_MAP` |
+
+O fluxo usa **Authorization Code + PKCE (S256)**, valida assinatura do `id_token`
+(RS256/384/512 ou ES256), `iss`, `aud`, `exp` e `nonce`. O primeiro login provisiona o
+usuário local; logins seguintes atualizam nome/e-mail e aplicam o papel somente quando a
+claim é explícita (claim ausente não rebaixa um admin existente).
+
+Com `MERIDIAN_OIDC_AUTO_PROVISION=0`, o primeiro login só funciona para um usuário local
+já criado (vinculado por e-mail verificado). O padrão `1` facilita o piloto; em produção com
+provedor que aceita contas externas, prefira `0` e provisione via administração.
+
+Limitações: `state`/`nonce` ficam em memória (uma instância); reinício no meio do login
+pede nova tentativa; logout no provedor (single logout) não é propagado.
+
+### Auditoria de exportações
+
+Excel, PDF e CSV chamam `POST /api/audit/export`; o servidor grava `acao=exportacao` com
+tipo e filtros ativos. A chamada é best-effort: indisponibilidade da API não bloqueia o
+download, mas a ausência do evento fica visível para o administrador.
+
 ## 5. Backup, retenção e LGPD
 
 | Item | Frequência | Procedimento |
 | --- | --- | --- |
-| PostgreSQL `dw` | diária | `pg_dump -Fc meridian > meridian-$(date +%F).dump` |
-| `data/imported` e `data/backups` | diária | snapshot/cópia do volume |
-| `config/usuarios.json` e `.secrets/` | a cada mudança | cofre de segredos, nunca no Git |
+| PostgreSQL `dw` | diária | `pg_dump -Fc meridian > meridian-$(date +%F).dump` ou `npm run backup` |
+| `data/` (inclui importações) | diária | `scripts/backup.sh` empacota em `arquivos.tar.gz` |
+| `config/` e `.secrets/` | a cada mudança | cofre de segredos, nunca no Git |
 | `logs/auditoria.jsonl` | diária | retenção conforme política (ex.: 12 meses) |
 | Restauração | trimestral | testar em ambiente separado, nunca só documentar |
 
+O script `scripts/backup.sh` grava dump do PostgreSQL (quando `pg_dump` existe),
+`arquivos.tar.gz`, checksums SHA-256, `manifest.txt` e aplica retenção
+(`BACKUP_KEEP_DAYS`, padrão 14). Agende no cron e replique para storage externo; detalhes
+e comandos de restauração em [`deploy/README.md`](../deploy/README.md).
+
 - Dados pessoais aparecem em comprador, usuário e logs de acesso. Evite exportar nomes
   quando não necessário e defina prazo de retenção.
-- A auditoria registra login, falha de login, importação, importação rejeitada e remoção.
-  Exportações feitas no navegador não passam pelo servidor; para auditá-las, use a API
-  como próximo passo.
+- A auditoria registra login, falha de login, login SSO, importação, importação rejeitada,
+  remoção, alteração de usuários e exportações Excel/PDF/CSV.
 - Não versionar `config/empresa.json`, `config/usuarios.json`, `.secrets/`, `logs/`,
-  `data/imported/` nem `data/backups/` (já estão no `.gitignore`).
+  `backups/`, `data/imported/` nem `data/backups/` (já estão no `.gitignore`).
 
 ---
 
@@ -248,6 +309,9 @@ Checklist mínimo:
 | painel abre vazio | `data/fato_pedidos.csv` e `data/config.json` existem? | importar novamente / restaurar volume |
 | importação 422 | resposta `errors` da API ou relatório | corrigir mapeamento/cadastro |
 | login em loop | cookie `Secure` sem HTTPS? | `MERIDIAN_SECURE_COOKIE=0` ou ativar TLS |
+| SSO retorna `erro=oidc` | redirect URI, issuer e relógio do servidor | conferir registro no provedor e logs |
+| SSO retorna `erro=oidc_estado` | reinício do app durante o login | repetir; estado expira em 10 min |
+| admin não vê o menu | papel ou sessão antiga | usar `scripts/usuarios.mjs listar` e refazer login |
 | números divergem do ERP | período, cancelados, frete e baseline | conferir regra de spend/saving |
 | ETL falha em FK | calendário ou dimensão ausente | ampliar calendário / completar cadastro |
 | auditoria não cresce | volume `logs` com permissão? | ajustar volume/permissões |
@@ -258,11 +322,12 @@ Checklist mínimo:
 
 - **Uma empresa por instalação.** Para um grupo com várias empresas, use um banco/volume
   por CNPJ ou evolua o modelo com `id_empresa` em todas as tabelas.
-- **Sem SSO/OIDC.** Login local atende piloto e média empresa; integração corporativa
-  (Azure AD, Okta) é o próximo passo.
+- **SSO sem single logout e com state em memória.** OIDC cobre Azure AD/Entra, Google,
+  Okta e Keycloak; MFA depende do provedor (contas locais ainda não têm TOTP). Em múltiplas
+  réplicas, use sticky session ou um store compartilhado para `state`.
 - **Escopo por linha aplica-se aos CSVs servidos**, não a um data warehouse já baixado.
-- **Exportações do navegador não são auditadas**; a auditoria cobre autenticação e
-  importação.
+- **A exportação é auditada via API best-effort.** Se a rede falhar entre o download e o
+  `POST /api/audit/export`, o evento pode não ser gravado; o download continua funcionando.
 - **Upload do painel é para CSV de pedidos**; volumes grandes e múltiplas tabelas devem
   entrar pelo importador + ETL.
 - **O painel web carrega os fatos em memória.** Até ~200 mil pedidos a experiência é boa;

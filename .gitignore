@@ -30,3 +30,6 @@ data/imported/
 data/backups/
 data_empresa/
 erp/
+
+# backups locais
+backups/

@@ -17,7 +17,8 @@ materializa o OTIF como coluna gerada.
 | Importação de ERP | `tests/importador.test.mjs` | número/data localizados, tradução de status, derivação de dimensões/preços e validação |
 | Configuração | `tests/config.test.mjs` | metas em fração/percentual, fallback e prazos de contrato |
 | Autenticação | `tests/auth.test.mjs` | scrypt, sessão assinada, expiração, rate limit e cookies |
-| Produção | `tests/prod.test.mjs` | login, RBAC, escopo, importação persistida, rejeição e auditoria |
+| SSO/OIDC | `tests/oidc.test.mjs` | assinatura/nonce/issuer/audience, PKCE S256, papéis e fluxo completo com IdP falso |
+| Produção | `tests/prod.test.mjs` | login, RBAC, escopo, importação, rejeição, usuários, auditoria e exportação |
 | Exportação | `tests/xlsx.test.mjs` | ZIP store-only, CRC, XML do workbook e escaping CSV |
 | Dataset | `scripts/smoke_test.mjs` | 22 verificações de integridade e faixas de KPI |
 | Banco real | `scripts/verify_sql_kpis.mjs` | `vw_kpi_geral`, `vw_contrato_gestao` e `vw_integridade_checklist` |
@@ -26,7 +27,7 @@ materializa o OTIF como coluna gerada.
 
 ```bash
 npm ci && npm run lint   # ESLint (devDependencies)
-npm test                 # 35 testes Node (KPI, ERP, auth, produção, exportação)
+npm test                 # 41 testes Node (KPI, ERP, auth, OIDC, produção e exportação)
 npm run check            # smoke test do dataset demo
 npm run test:etl         # unittest do ETL (requer pandas)
 npm run test:sql         # requer DATABASE_URL e psql
@@ -71,7 +72,8 @@ full no staging.
 
 A camada de produção adiciona um teste de integração HTTP real (`tests/prod.test.mjs`):
 servidor efêmero, login, cookie, escopo por unidade, importação, rejeição, auditoria,
-backup e remoção. Nenhum banco é necessário para esse teste.
+backup, gestão de usuários e exportação. O fluxo SSO tem um teste próprio com um provedor
+OIDC falso (discovery, JWKS, PKCE e `id_token`). Nenhum banco é necessário.
 
 A publicação da demonstração é feita por [`pages.yml`](../.github/workflows/pages.yml).
 
@@ -80,4 +82,5 @@ A publicação da demonstração é feita por [`pages.yml`](../.github/workflows
 - Renderização visual pixel a pixel (o painel é validado por teste de renderização e checklist manual).
 - Geração do PDF (depende da engine de impressão do navegador).
 - Testes de carga com dezenas de milhões de linhas.
+- MFA/TOTP e logout federado (single logout) do provedor SSO.
 - SCD tipo 2 e CDC de ERP, que exigiriam uma origem real.

@@ -29,9 +29,9 @@ exportação em Excel/PDF e upload de dados.
 | **Ingestão** | Upload de CSV com validação de schema, chaves, tipos e regras de negócio |
 | **Contratos** | Vencimentos, saldo, realizado vs. contratado, execução, reajuste e exposição por fornecedor |
 | **Planejamento** | Previsão de spend por regressão linear e simulador de renegociação |
-| **Qualidade** | 35 testes Node, testes Python do ETL, reconciliação real painel × SQL e CI no GitHub Actions |
+| **Qualidade** | 41 testes Node, testes Python do ETL, reconciliação real painel × SQL e CI no GitHub Actions |
 | **Modos de dados** | Dataset demo, base vazia e somente importações, com estados vazios reais e preferência salva |
-| **Implantação real** | Perfil por empresa, importação de ERP com mapeamento, login/RBAC, importação persistida, auditoria e Docker |
+| **Implantação real** | Perfil por empresa, importação de ERP, login/RBAC + SSO, administração, auditoria, Docker e HTTPS/backup |
 
 ---
 
@@ -146,22 +146,26 @@ ser números fixos e passam a vir de `data/config.json`, usado pelo painel, PDF 
 
 - **Perfil por empresa** — `config/empresa.json` define marca, moeda, metas e o mapeamento
   de cada tabela; `data/config.json` é o que o painel consome.
-- **Login local** — scrypt com salt, cookie `HttpOnly` assinado por HMAC, rate limit de
-  tentativas e sessão expirável. Papéis: admin, analista, comprador e leitor.
+- **Login local e SSO** — scrypt com salt, cookie `HttpOnly` assinado por HMAC, rate limit
+  de tentativas e sessão expirável. SSO via OpenID Connect (PKCE) com Azure AD/Entra,
+  Google, Okta, Keycloak ou Authentik; papéis mapeados por claim (`roles`/`groups`).
+- **Administração no produto** — tela para criar usuários, trocar papel, definir escopo,
+  redefinir senha/desativar e consultar a auditoria, sem depender da CLI.
 - **Escopo por linha** — usuários podem ser limitados a unidades, categorias e
   fornecedores; os CSVs de fatos servidos já saem filtrados (cotações herdam a requisição).
 - **Importação persistida** — CSV validado no servidor, gravado com escrita atômica,
   backup versionado e upsert por `id_pedido`; o navegador deixa de depender do
   `localStorage` quando o servidor de produção está ativo.
-- **Auditoria** — `logs/auditoria.jsonl` registra login, falha, importação, rejeição e
-  remoção, com usuário, papel, IP e detalhe.
-- **Docker** — `docker compose -f docker-compose.prod.yml up -d --build` sobe o painel com
-  volumes separados para dados, configuração e logs; o PostgreSQL continua no
-  `docker-compose.yml`.
+- **Auditoria** — `logs/auditoria.jsonl` registra login, falha, login SSO, importação,
+  rejeição, remoção, alterações de usuário e exportações (Excel/PDF/CSV), com usuário,
+  papel, IP e detalhe.
+- **Docker e operação** — `docker compose -f docker-compose.prod.yml up -d --build` sobe o
+  painel com volumes separados; o PostgreSQL continua no `docker-compose.yml`. Exemplos de
+  HTTPS em [`deploy/`](deploy/README.md) e backup com retenção/checksums em
+  `scripts/backup.sh` (`npm run backup`).
 
-> **Escopo desta camada:** uma empresa por instalação. SSO/OIDC, multiempresa por linha e
-> auditoria de exportações do navegador estão na lista de evolução — e documentados como
-> limite, não como promessa.
+> **Escopo desta camada:** uma empresa por instalação. Multiempresa por linha, MFA e
+> auditoria de leituras/consultas ficam na lista de evolução.
 
 ---
 
@@ -182,7 +186,8 @@ inspeção manual:
 | **SQL** | `vw_kpi_geral`, carteira contratual e checklist de integridade | `npm run test:sql` |
 | **Importação de ERP** | números/datas localizados, tradução de status, derivação de dimensões, PK/FK e saving | `npm test` |
 | **Auth/RBAC** | scrypt, sessão assinada, expiração, rate limit e permissões | `npm test` |
-| **Servidor de produção** | login, escopo por unidade, importação persistida, rejeição e auditoria | `npm test` |
+| **SSO/OIDC** | PKCE, assinatura/JWKS, nonce/issuer/audience, papéis e fluxo com IdP falso | `npm test` |
+| **Servidor de produção** | login, escopo, importação, gestão de usuários, auditoria e exportação | `npm test` |
 
 O CI (`.github/workflows/ci.yml`) roda lint, Node, Python e um PostgreSQL 16 real. A publicação
 online usa `.github/workflows/pages.yml`. A matriz completa, casos de borda e o que fica
@@ -209,7 +214,7 @@ agendada. O roteiro completo está em
 
 ---
 
-## As 7 páginas do painel
+## As 7 páginas do painel + Administração
 
 1. **Visão executiva** — spend vs. orçamento, economia, OTIF, concentração, heatmap
    categoria × mês, **previsão de spend para 3 meses** e leituras automáticas do período.
@@ -226,6 +231,8 @@ agendada. O roteiro completo está em
 6. **Contratos & riscos** — contratos a vencer em 90 dias, vencidos com pedido ativo,
    saldo contratual, valor contratado vs. realizado, reajustes e exposição financeira.
 7. **Dados & exportação** — upload validado, dicionário, qualidade e central de exportação.
+8. **Administração** (somente admin, produção) — usuários, papéis, escopo, senha/status e
+   auditoria de login, importação, exportação e alterações de acesso.
 
 Filtros globais: período (com intervalo personalizado), unidade, categoria, comprador,
 fornecedor e status do pedido. Tudo recalcula na hora, inclusive os deltas contra o
@@ -284,11 +291,14 @@ A árvore completa de KPIs, fórmulas em SQL/DAX e decisões de definição est�
 ├── app/                  painel analítico (HTML/CSS/JS, sem dependências)
 │   ├── css/theme.css     design tokens pastel, componentes, impressão A4 e login
 │   └── js/               dados, configuração, gráficos SVG, páginas, XLSX, PDF, upload
+│       ├── admin.js      tela de usuários, escopo e auditoria
 │       ├── config.js     perfil, metas e limites por empresa
 │       ├── import-core.js regras de importação compartilhadas painel × servidor
+│       ├── audit.js      registro de exportações no servidor
 │       └── kpi.js        regras canônicas de KPI (OTIF, score, contratos, previsão)
 ├── config/               perfil de empresa (exemplo versionado; o real fica no .gitignore)
-├── server/               auth (scrypt/sessão) e servidor de produção (RBAC/auditoria)
+├── deploy/               exemplos de HTTPS (Caddy/Nginx) e backup/restauração
+├── server/               auth (scrypt/sessão), OIDC (PKCE/JWKS) e servidor de produção
 ├── scripts/              gerador, importador de ERP, usuários, smoke test e reconciliação
 ├── .github/workflows/   CI (Node + ETL + PostgreSQL) e publicação no GitHub Pages
 ├── data/                dataset versionado (CSVs ';') + config.json do perfil
@@ -297,7 +307,7 @@ A árvore completa de KPIs, fórmulas em SQL/DAX e decisões de definição est�
 ├── etl/                 geração, validação, carga full/incremental e testes Python
 ├── powerbi/             tema pastel, Power Query (CSV/PostgreSQL) e guia do modelo
 ├── sql/                 DDL, views de KPI, consultas, governança e checklist
-├── tests/               KPI, paridade, upload, XLSX, config, ERP, auth e produção
+├── tests/               KPI, paridade, upload, XLSX, config, ERP, auth, OIDC e produção
 ├── docker-compose.yml   PostgreSQL 16 local para a integração real
 ├── docker-compose.prod.yml  painel de produção com volumes e healthcheck
 ├── Dockerfile           imagem Node 24 com seed de dataset/perfil e non-root
@@ -379,8 +389,8 @@ Detalhamento e alternativas descartadas em [`docs/04-decisoes-tecnicas.md`](docs
 
 ## Próximos passos sugeridos
 
-1. **SSO/OIDC e multiempresa por linha** (`id_empresa` em todas as tabelas), com painel de
-   administração e trilha de auditoria de exportações.
+1. **MFA/TOTP e multiempresa por linha** (`id_empresa` em todas as tabelas), com política
+   de senha, revisão periódica de acessos e single logout federado.
 2. Publicar o modelo no Power BI Service com gateway para o PostgreSQL e atualização agendada
    (passo a passo em [`docs/07-integracao-powerbi.md`](docs/07-integracao-powerbi.md)).
 3. Evoluir a previsão para um modelo sazonal (SARIMA/Prophet) e simulação Monte Carlo de

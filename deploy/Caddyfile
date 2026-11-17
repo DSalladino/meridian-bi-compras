@@ -1,0 +1,36 @@
+# Exemplo de proxy HTTPS com Caddy (TLS automático).
+#
+# 1. Aponte bi.suaempresa.com para o servidor.
+# 2. Ajuste o domínio abaixo.
+# 3. Rode o app com MERIDIAN_SECURE_COOKIE=1 e MERIDIAN_TRUST_PROXY=1.
+# 4. `caddy run --config deploy/Caddyfile`
+#
+# Em Docker Compose, use `app:4173` no reverse_proxy e coloque este Caddyfile
+# em um serviço Caddy na mesma rede.
+
+bi.suaempresa.com {
+	encode zstd gzip
+
+	# Limite compatível com uploads de CSV do painel.
+	request_body {
+		max_size 12MB
+	}
+
+	reverse_proxy app:4173 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+		header_up Host {host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/meridian-access.log
+		format json
+	}
+}

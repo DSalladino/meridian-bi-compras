@@ -8,6 +8,7 @@
  * (o PostgreSQL continua sendo a camada analítica para Power BI/SQL).
  */
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +19,9 @@ import {
 } from "./auth.mjs";
 import { parseDelimited, TABLES, toCSV } from "../scripts/lib/erp.mjs";
 import { normalizeImport, TEMPLATE_HEADER } from "../app/js/import-core.js";
+import {
+  createOidcClient, oidcConfigFromEnv, roleFromClaims, upsertOidcUser,
+} from "./oidc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MIME = {
@@ -207,11 +211,16 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function loginHTML(marca, empresa, erro) {
-  const msg = erro === "credenciais" ? "Usuário ou senha inválidos."
-    : erro === "limite" ? "Muitas tentativas. Aguarde alguns minutos."
-      : erro === "sessao" ? "Sua sessão expirou. Entre novamente."
-        : "";
+function loginHTML(marca, empresa, erro, sso) {
+  const msg = {
+    credenciais: "Usuário ou senha inválidos.",
+    limite: "Muitas tentativas. Aguarde alguns minutos.",
+    sessao: "Sua sessão expirou. Entre novamente.",
+    oidc: "Não foi possível concluir o login SSO. Tente novamente.",
+    oidc_provider: "O provedor de identidade está indisponível. Tente novamente ou use o login local.",
+    oidc_estado: "A sessão de login expirou. Inicie o SSO novamente.",
+    oidc_sem_acesso: "Sua conta não tem acesso a esta instalação. Peça liberação ao administrador.",
+  }[erro] || "";
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -228,6 +237,7 @@ function loginHTML(marca, empresa, erro) {
     <h1>Entrar</h1>
     <p class="muted tiny">${esc(empresa)} · acesso restrito e auditado</p>
     ${msg ? `<div class="notice bad" role="alert">${esc(msg)}</div>` : ""}
+    ${sso ? `<a class="btn btn-ghost login-sso" href="/auth/oidc/start">${esc(sso.buttonLabel || "Entrar com SSO")}</a><div class="login-divider"><span>ou entre com usuário local</span></div>` : ""}
     <form method="post" action="/api/login">
       <label for="usuario">Usuário</label>
       <input id="usuario" name="usuario" autocomplete="username" required autofocus />
@@ -241,8 +251,8 @@ function loginHTML(marca, empresa, erro) {
 </html>`;
 }
 
-function erroLoginHTML(marca, empresa, motivo) {
-  return loginHTML(marca, empresa, motivo);
+function erroLoginHTML(marca, empresa, motivo, sso) {
+  return loginHTML(marca, empresa, motivo, sso);
 }
 
 function configDaEmpresa(root) {
@@ -264,6 +274,9 @@ export function createProdServer(options = {}) {
   const sessionSecret = options.sessionSecret || carregarSegredo(root, env);
   const sessionMs = Number(options.sessionHours || env.MERIDIAN_SESSION_HOURS || 8) * 3600 * 1000;
   const secureCookie = String(env.MERIDIAN_SECURE_COOKIE || "") === "1";
+  const oidc = options.oidcClient === null
+    ? null
+    : options.oidcClient || createOidcClient(oidcConfigFromEnv(env), { fetchImpl: options.fetchImpl || fetch });
   const trustProxy = String(env.MERIDIAN_TRUST_PROXY || "") === "1";
   const maxImported = Number(env.MERIDIAN_MAX_IMPORT_ROWS || 200000);
   const limite = criarRateLimit({ limite: Number(env.MERIDIAN_LOGIN_LIMIT || 8) });
@@ -308,7 +321,20 @@ export function createProdServer(options = {}) {
     nome: u.nome || u.usuario,
     papel: u.papel,
     papelLabel: PAPEIS[u.papel]?.label || u.papel,
+    email: u.email || null,
     escopo: u.escopo || null,
+  });
+
+  const adminsAtivos = (lista) => lista.filter((u) => u.papel === "admin" && u.ativo !== false);
+  const garantirAdmin = (lista) => adminsAtivos(lista).length > 0;
+  const normalizarEscopo = (escopo) => {
+    if (!escopo || typeof escopo !== "object") return undefined;
+    const lista = (v) => (Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : []);
+    const out = { unidades: lista(escopo.unidades), categorias: lista(escopo.categorias), fornecedores: lista(escopo.fornecedores) };
+    return out.unidades.length || out.categorias.length || out.fornecedores.length ? out : undefined;
+  };
+  const descricaoUsuario = (u) => ({
+    usuario: u.usuario, nome: u.nome, papel: u.papel, ativo: u.ativo !== false, escopo: u.escopo || null,
   });
 
   function sessaoDe(req) {
@@ -319,6 +345,24 @@ export function createProdServer(options = {}) {
     if (!user || user.ativo === false) return null;
     if (Number(payload.v || 0) !== Number(user.sessionVersion || 0)) return null;
     return { user, payload };
+  }
+
+  function redirectUriOidc(req) {
+    if (oidc?.config.redirectUri) return oidc.config.redirectUri;
+    if (oidc?.config.publicUrl) return `${oidc.config.publicUrl}/auth/oidc/callback`;
+    const proto = (trustProxy && String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim())
+      || (req.socket.encrypted ? "https" : "http");
+    return `${proto}://${req.headers.host || "localhost"}/auth/oidc/callback`;
+  }
+
+  function marcarSessao(req, res, user, extraHeaders = {}) {
+    const exp = Date.now() + sessionMs;
+    const token = assinarSessao({ usuario: user.usuario, papel: user.papel, v: user.sessionVersion || 0, exp }, sessionSecret);
+    const headers = {
+      ...extraHeaders,
+      "Set-Cookie": cookieSessao(token, { secure: secureCookie, maxAgeSeconds: Math.floor(sessionMs / 1000) }),
+    };
+    return { exp, headers };
   }
 
   function dims() {
@@ -403,6 +447,61 @@ export function createProdServer(options = {}) {
         return sendJSON(res, 200, { ok: true, modo: "producao", versao: 1 }, method);
       }
 
+      if (pathname === "/auth/oidc/start" && method === "GET") {
+        if (!oidc) return send(res, 404, "404 — SSO não configurado");
+        try {
+          const url = await oidc.authorizationUrl({ redirectUri: redirectUriOidc(req) });
+          return send(res, 303, "", { Location: url, "Cache-Control": "no-store" });
+        } catch (err) {
+          console.error("oidc start:", err.message);
+          audit(logDir, { ip, acao: "login_oidc_falha", detalhe: `provider: ${err.message}` });
+          return send(res, 303, "", { Location: "/login.html?erro=oidc_provider" });
+        }
+      }
+
+      if (pathname === "/auth/oidc/callback" && method === "GET") {
+        if (!oidc) return send(res, 404, "404 — SSO não configurado");
+        const erroProvider = url.searchParams.get("error");
+        const state = url.searchParams.get("state") || "";
+        const saved = oidc.estados.consumir(state);
+        if (erroProvider) {
+          audit(logDir, { ip, acao: "login_oidc_falha", detalhe: `provider retornou ${erroProvider}` });
+          return send(res, 303, "", { Location: "/login.html?erro=oidc" });
+        }
+        if (!saved) {
+          audit(logDir, { ip, acao: "login_oidc_falha", detalhe: "state inválido ou expirado" });
+          return send(res, 303, "", { Location: "/login.html?erro=oidc_estado" });
+        }
+        const code = url.searchParams.get("code");
+        if (!code) {
+          audit(logDir, { ip, acao: "login_oidc_falha", detalhe: "authorization code ausente" });
+          return send(res, 303, "", { Location: "/login.html?erro=oidc" });
+        }
+        try {
+          const tokens = await oidc.trocarCodigo({ code, codeVerifier: saved.verifier, redirectUri: saved.redirectUri });
+          const claims = await oidc.verificarIdToken(tokens.id_token, saved.nonce);
+          if (!claims.sub) throw new Error("claim sub ausente");
+          const role = roleFromClaims(claims, oidc.config);
+          const { user, criado } = upsertOidcUser(usuarios, claims, oidc.config, role);
+          if (user.ativo === false) {
+            audit(logDir, { ip, usuario: user.usuario, acao: "login_oidc_falha", detalhe: "usuário inativo" });
+            return send(res, 303, "", { Location: "/login.html?erro=oidc_sem_acesso" });
+          }
+          salvarUsuarios(usersFile, usuarios);
+          usuariosMtime = fs.statSync(usersFile).mtimeMs;
+          const { headers } = marcarSessao(req, res, user);
+          audit(logDir, {
+            ip, usuario: user.usuario, papel: user.papel, acao: "login_oidc",
+            detalhe: criado ? `usuário provisionado via ${oidc.config.issuer}` : `login via ${oidc.config.issuer}`,
+          });
+          return send(res, 303, "", { Location: "/app/", ...headers });
+        } catch (err) {
+          console.error("oidc callback:", err.message);
+          audit(logDir, { ip, acao: "login_oidc_falha", detalhe: err.message.slice(0, 300) });
+          return send(res, 303, "", { Location: err.code === "sem_acesso" ? "/login.html?erro=oidc_sem_acesso" : "/login.html?erro=oidc" });
+        }
+      }
+
       if (pathname === "/api/login" && method === "POST") {
         if (!sameOrigin(req)) return sendJSON(res, 403, { erro: "Origem inválida." }, method);
         if (!limite.permitir(ip)) {
@@ -424,17 +523,12 @@ export function createProdServer(options = {}) {
           return send(res, 303, "", { Location: "/login.html?erro=credenciais" }, method);
         }
         limite.limpar(ip);
-        const exp = Date.now() + sessionMs;
-        const token = assinarSessao({ usuario: user.usuario, papel: user.papel, v: user.sessionVersion || 0, exp }, sessionSecret);
+        const { exp, headers: sessionHeaders } = marcarSessao(req, res, user);
         audit(logDir, { ip, usuario: user.usuario, papel: user.papel, acao: "login", detalhe: "sessão iniciada" });
         if (String(req.headers["content-type"] || "").includes("application/json")) {
-          return sendJSON(res, 200, { ok: true, usuario: publico(user), expiraEm: new Date(exp).toISOString() }, method,
-            { "Set-Cookie": cookieSessao(token, { secure: secureCookie, maxAgeSeconds: Math.floor(sessionMs / 1000) }) });
+          return sendJSON(res, 200, { ok: true, usuario: publico(user), expiraEm: new Date(exp).toISOString() }, method, sessionHeaders);
         }
-        return send(res, 303, "", {
-          Location: "/app/",
-          "Set-Cookie": cookieSessao(token, { secure: secureCookie, maxAgeSeconds: Math.floor(sessionMs / 1000) }),
-        }, method);
+        return send(res, 303, "", { Location: "/app/", ...sessionHeaders }, method);
       }
 
       if (pathname === "/api/logout" && method === "POST") {
@@ -458,7 +552,7 @@ export function createProdServer(options = {}) {
 
       if (pathname === "/login.html") {
         if (autenticado) return send(res, 303, "", { Location: "/app/" }, method);
-        return send(res, 200, erroLoginHTML(marca, empresa, url.searchParams.get("erro")), { "Content-Type": MIME[".html"], "Cache-Control": "no-store" }, method);
+        return send(res, 200, erroLoginHTML(marca, empresa, url.searchParams.get("erro"), oidc?.config), { "Content-Type": MIME[".html"], "Cache-Control": "no-store" }, method);
       }
 
       if (pathname === "/" || pathname === "/app" || pathname === "/app/") {
@@ -523,6 +617,28 @@ export function createProdServer(options = {}) {
         return sendJSON(res, 405, { erro: "Método não permitido." }, method, { Allow: "POST, DELETE" });
       }
 
+      if (pathname === "/api/audit/export" && method === "POST") {
+        if (!autenticado) return sendJSON(res, 401, { erro: "Não autenticado." }, method);
+        if (!sameOrigin(req)) return sendJSON(res, 403, { erro: "Origem inválida." }, method);
+        if (PAPEIS[sess.user.papel]?.exportar === false) return sendJSON(res, 403, { erro: "Seu papel não permite exportar." }, method);
+        const body = parseBody(req, await readBody(req, 16 * 1024));
+        const tipo = String(body.tipo || "desconhecido").slice(0, 40);
+        if (!["excel", "pdf", "csv_pedidos", "csv_cotacoes"].includes(tipo)) {
+          return sendJSON(res, 400, { erro: "Tipo de exportação inválido." }, method);
+        }
+        const detalhe = JSON.stringify({
+          tipo,
+          periodo: body.periodo || null,
+          unidade: body.unidade || null,
+          categoria: body.categoria || null,
+          comprador: body.comprador || null,
+          fornecedor: body.fornecedor || null,
+          status: body.status || null,
+        }).slice(0, 1200);
+        audit(logDir, { ip, usuario: sess.user.usuario, papel: sess.user.papel, acao: "exportacao", detalhe });
+        return sendJSON(res, 204, {}, method);
+      }
+
       if (pathname === "/api/audit") {
         if (!autenticado) return sendJSON(res, 401, { erro: "Não autenticado." }, method);
         if (!podeAdministrar(sess.user.papel)) return sendJSON(res, 403, { erro: "Acesso restrito a administradores." }, method);
@@ -532,7 +648,100 @@ export function createProdServer(options = {}) {
       if (pathname === "/api/usuarios") {
         if (!autenticado) return sendJSON(res, 401, { erro: "Não autenticado." }, method);
         if (!podeAdministrar(sess.user.papel)) return sendJSON(res, 403, { erro: "Acesso restrito a administradores." }, method);
-        return sendJSON(res, 200, { usuarios: usuarios.map((u) => ({ ...publico(u), ativo: u.ativo !== false, criadoEm: u.criadoEm || null })) }, method);
+        if (method === "GET") {
+          return sendJSON(res, 200, { usuarios: usuarios.map((u) => ({ ...publico(u), ativo: u.ativo !== false, criadoEm: u.criadoEm || null, email: u.email || "", origem: u.oidcSub ? "sso" : "local" })) }, method);
+        }
+        if (method === "POST") {
+          if (!sameOrigin(req)) return sendJSON(res, 403, { erro: "Origem inválida." }, method);
+          const body = parseBody(req, await readBody(req, 64 * 1024));
+          const username = String(body.usuario || "").trim();
+          const nome = String(body.nome || username).trim().slice(0, 120);
+          const papel = String(body.papel || "leitor");
+          if (!/^[a-zA-Z0-9._-]{3,40}$/.test(username)) {
+            return sendJSON(res, 422, { erro: "Usuário deve ter 3–40 caracteres (letras, números, . _ -)." }, method);
+          }
+          if (!PAPEIS[papel]) return sendJSON(res, 422, { erro: "Papel inválido." }, method);
+          if (usuarios.some((u) => u.usuario === username)) return sendJSON(res, 409, { erro: "Usuário já existe." }, method);
+          const senha = typeof body.senha === "string" && body.senha.length ? body.senha : crypto.randomBytes(9).toString("base64url");
+          let credenciais;
+          try { credenciais = hashPassword(senha); } catch (err) { return sendJSON(res, 422, { erro: err.message }, method); }
+          const user = {
+            usuario: username, nome, papel, ativo: true,
+            salt: credenciais.salt, hash: credenciais.hash,
+            escopo: normalizarEscopo(body.escopo),
+            criadoEm: new Date().toISOString(),
+          };
+          usuarios.push(user);
+          salvarUsuarios(usersFile, usuarios);
+          usuariosMtime = fs.statSync(usersFile).mtimeMs;
+          audit(logDir, { ip, usuario: sess.user.usuario, papel: sess.user.papel, acao: "usuario_criado", detalhe: `${username} (${papel})` });
+          return sendJSON(res, 201, {
+            usuario: { ...publico(user), ativo: true, criadoEm: user.criadoEm, origem: "local" },
+            senhaGerada: senha,
+          }, method);
+        }
+        return sendJSON(res, 405, { erro: "Método não permitido." }, method, { Allow: "GET, POST" });
+      }
+
+      const matchUsuario = pathname.match(/^\/api\/usuarios\/([^/]+)$/);
+      if (matchUsuario) {
+        if (!autenticado) return sendJSON(res, 401, { erro: "Não autenticado." }, method);
+        if (!podeAdministrar(sess.user.papel)) return sendJSON(res, 403, { erro: "Acesso restrito a administradores." }, method);
+        if (!sameOrigin(req)) return sendJSON(res, 403, { erro: "Origem inválida." }, method);
+        const alvo = decodeURIComponent(matchUsuario[1]);
+        const idx = usuarios.findIndex((u) => u.usuario === alvo);
+        if (idx < 0) return sendJSON(res, 404, { erro: "Usuário não encontrado." }, method);
+        const user = usuarios[idx];
+        if (method === "PATCH") {
+          const body = parseBody(req, await readBody(req, 64 * 1024));
+          const proximo = { ...user };
+          if (body.nome != null) proximo.nome = String(body.nome).trim().slice(0, 120) || user.usuario;
+          if (body.escopo !== undefined) proximo.escopo = normalizarEscopo(body.escopo);
+          if (body.papel != null) {
+            const papel = String(body.papel);
+            if (!PAPEIS[papel]) return sendJSON(res, 422, { erro: "Papel inválido." }, method);
+            proximo.papel = papel;
+          }
+          if (body.ativo != null) proximo.ativo = Boolean(body.ativo);
+          if (body.senha != null) {
+            try {
+              Object.assign(proximo, hashPassword(String(body.senha)));
+              proximo.sessionVersion = Number(user.sessionVersion || 0) + 1;
+              proximo.senhaTrocadaEm = new Date().toISOString();
+            } catch (err) {
+              return sendJSON(res, 422, { erro: err.message }, method);
+            }
+          }
+          if ((user.papel === "admin" && proximo.papel !== "admin") || (user.ativo !== false && proximo.ativo === false)) {
+            const restantes = usuarios.filter((u, i) => i !== idx);
+            restantes.push(proximo);
+            if (!garantirAdmin(restantes)) {
+              return sendJSON(res, 409, { erro: "A ação deixaria a instalação sem administrador ativo." }, method);
+            }
+          }
+          if (user.ativo !== false && proximo.ativo === false) {
+            proximo.sessionVersion = Number(proximo.sessionVersion || 0) + 1;
+          }
+          usuarios[idx] = proximo;
+          salvarUsuarios(usersFile, usuarios);
+          usuariosMtime = fs.statSync(usersFile).mtimeMs;
+          audit(logDir, {
+            ip, usuario: sess.user.usuario, papel: sess.user.papel, acao: "usuario_atualizado",
+            detalhe: JSON.stringify(descricaoUsuario(proximo)),
+          });
+          return sendJSON(res, 200, { usuario: { ...publico(proximo), ativo: proximo.ativo !== false, origem: proximo.oidcSub ? "sso" : "local" } }, method);
+        }
+        if (method === "DELETE") {
+          if (user.papel === "admin" && !garantirAdmin(usuarios.filter((u, i) => i !== idx))) {
+            return sendJSON(res, 409, { erro: "Não é possível remover o último administrador ativo." }, method);
+          }
+          usuarios.splice(idx, 1);
+          salvarUsuarios(usersFile, usuarios);
+          usuariosMtime = fs.statSync(usersFile).mtimeMs;
+          audit(logDir, { ip, usuario: sess.user.usuario, papel: sess.user.papel, acao: "usuario_removido", detalhe: alvo });
+          return sendJSON(res, 200, { ok: true }, method);
+        }
+        return sendJSON(res, 405, { erro: "Método não permitido." }, method, { Allow: "PATCH, DELETE" });
       }
 
       if (method !== "GET" && method !== "HEAD") return send(res, 405, "405 — método não permitido", { Allow: "GET, HEAD" }, method);

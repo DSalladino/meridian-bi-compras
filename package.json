@@ -9,12 +9,13 @@
     "data": "node scripts/generate_dataset.mjs",
     "check": "node scripts/smoke_test.mjs",
     "lint": "eslint .",
-    "test": "node --test tests/kpi.test.mjs tests/parity.test.mjs tests/upload.test.mjs tests/xlsx.test.mjs tests/render.test.mjs tests/config.test.mjs tests/importador.test.mjs tests/auth.test.mjs tests/prod.test.mjs",
+    "test": "node --test tests/kpi.test.mjs tests/parity.test.mjs tests/upload.test.mjs tests/xlsx.test.mjs tests/render.test.mjs tests/config.test.mjs tests/importador.test.mjs tests/auth.test.mjs tests/oidc.test.mjs tests/prod.test.mjs",
     "test:sql": "node scripts/verify_sql_kpis.mjs",
     "test:etl": "python -m unittest discover -s etl -p \"test_*.py\" -v",
     "start:prod": "node server/prod.mjs",
     "importar": "node scripts/importar_erp.mjs",
-    "usuarios": "node scripts/usuarios.mjs"
+    "usuarios": "node scripts/usuarios.mjs",
+    "backup": "bash scripts/backup.sh"
   },
   "repository": {
     "type": "git",

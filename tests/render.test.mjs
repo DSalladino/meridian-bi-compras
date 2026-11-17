@@ -65,3 +65,19 @@ test("páginas renderizam com base mínima: sem cotações, contratos, orçament
     assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/, `base mínima: ${page}`);
   }
 });
+
+test("página de administração renderiza para admin e nega para leitor", () => {
+  const anterior = { api: store.api, usuario: store.usuario };
+  store.api = true;
+  store.usuario = { usuario: "admin", nome: "Admin", papel: "admin" };
+  renderPage("admin");
+  const html = elements.get("page-admin").innerHTML;
+  assert.match(html, /id="admin-root"/);
+  assert.match(html, /Usuários/);
+  assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/);
+  store.usuario = { usuario: "lia", nome: "Lia", papel: "leitor" };
+  renderPage("admin");
+  assert.match(elements.get("page-admin").innerHTML, /Administração indisponível/);
+  store.api = anterior.api;
+  store.usuario = anterior.usuario;
+});

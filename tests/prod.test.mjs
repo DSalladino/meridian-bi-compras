@@ -82,6 +82,7 @@ test("servidor de produção: login, RBAC, escopo, importação persistida e aud
     assert.equal(loginLeitor.json.usuario.papel, "leitor");
     assert.equal((await call("/app/")).status, 200);
     assert.equal((await call("/api/audit")).status, 403);
+    assert.equal((await call("/api/usuarios", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ usuario: "x.y", nome: "X", papel: "admin" }) })).status, 403);
     assert.equal((await call("/api/import", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: CSV }),
     })).status, 403);
@@ -135,6 +136,36 @@ test("servidor de produção: login, RBAC, escopo, importação persistida e aud
     assert.ok(acoes.includes("login_falha"));
     assert.ok(acoes.includes("importacao"));
     assert.ok(acoes.includes("importacao_rejeitada"));
+
+    // Gestão de usuários: criar, alterar papel, exportar e proteger o último admin.
+    const novo = await call("/api/usuarios", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ usuario: "ana.teste", nome: "Ana Teste", papel: "leitor", escopo: { unidades: ["U1"] } }),
+    });
+    assert.equal(novo.status, 201, novo.text);
+    assert.ok(novo.json.senhaGerada?.length >= 8);
+    const patch = await call("/api/usuarios/ana.teste", {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ papel: "analista", ativo: false }),
+    });
+    assert.equal(patch.status, 200);
+    assert.equal(patch.json.usuario.papel, "analista");
+    assert.equal(patch.json.usuario.ativo, false);
+    const duplicado = await call("/api/usuarios", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ usuario: "ana.teste", nome: "Outra", papel: "leitor" }),
+    });
+    assert.equal(duplicado.status, 409);
+
+    const exportou = await call("/api/audit/export", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tipo: "excel", periodo: { de: "2026-01-01", ate: "2026-12-31" }, unidade: "U1" }),
+    });
+    assert.equal(exportou.status, 204);
+    assert.ok((await call("/api/audit")).json.eventos.some((e) => e.acao === "exportacao"));
+
+    const ultimoAdmin = await call("/api/usuarios/admin", { method: "DELETE" });
+    assert.equal(ultimoAdmin.status, 409);
 
     // Remoção é restrita a administrador e cria backup.
     assert.equal((await call("/api/import", { method: "DELETE" })).status, 200);

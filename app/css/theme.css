@@ -539,3 +539,29 @@ table.data tfoot td { font-weight: 600; background: #faf8fc; border-top: 1px sol
 .login-card input:focus { outline: 2px solid var(--lilac); outline-offset: 1px; background: #fff; }
 .login-card .btn { margin-top: 10px; width: 100%; padding: 11px 14px; }
 .login-card .notice { margin-top: 16px; }
+
+.login-sso { margin-top: 18px; display: flex; justify-content: center; }
+.login-divider {
+  display: flex; align-items: center; gap: 10px; margin: 16px 0 4px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted);
+}
+.login-divider::before, .login-divider::after {
+  content: ""; height: 1px; flex: 1; background: var(--line);
+}
+
+/* ---------------------------- administração ------------------------------ */
+.admin-root { display: grid; gap: 14px; }
+.admin-form {
+  margin: 4px 0 14px; padding: 14px; border: 1px solid var(--line);
+  border-radius: var(--r-md); background: var(--bg-soft);
+}
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 14px; margin-bottom: 10px; }
+.form-row label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+.form-row input, .form-row select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm); font: inherit; font-size: 12px; background: #fff; color: var(--ink);
+}
+.admin-form-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-actions { white-space: nowrap; }
+.btn.danger { color: var(--bad); }
+.notice.good { background: var(--mint-soft); border-color: #c6e4d6; color: #3f6b58; }

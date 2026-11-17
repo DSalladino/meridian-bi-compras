@@ -60,8 +60,14 @@ Roteiro rápido de validação antes de publicar uma alteração.
 - [ ] Spend, pedidos, OTIF e savings conciliados com o ERP em dois meses fechados.
 - [ ] Login funciona para admin/analista/comprador/leitor; leitor não importa nem administra.
 - [ ] Usuário com escopo por unidade baixa apenas os fatos permitidos.
+- [ ] Tela Administração cria usuário, altera papel/escopo, redefine senha e desativa conta.
+- [ ] Último admin ativo não pode ser removido/rebaixado (retorno 409).
+- [ ] SSO completa login (state/nonce/PKCE) e provisiona usuário com papel correto.
+- [ ] Exportação Excel/PDF/CSV gera evento `exportacao` na auditoria.
 - [ ] Importação inválida retorna 422 e aparece em `logs/auditoria.jsonl`.
 - [ ] Importação válida persiste em `data/imported/`, cria backup e aparece no painel.
 - [ ] Cookie de sessão é `HttpOnly` e, atrás de HTTPS, `Secure`.
 - [ ] Backup do PostgreSQL, do volume de dados e dos usuários testado em restauração.
+- [ ] HTTPS ativo no proxy, `MERIDIAN_SECURE_COOKIE=1` e HSTS presente.
+- [ ] `scripts/backup.sh` agendado, com checksums e cópia externa.
 - [ ] `docker compose -f docker-compose.prod.yml config` válido e healthcheck saudável.
