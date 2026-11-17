@@ -4,6 +4,10 @@ import { store, delivered } from "./data.js";
 import { lineChart, donut } from "./charts.js";
 import { buildXLSX } from "./xlsx.js";
 
+function brand() {
+  return store.config?.empresa || { nome: "Grupo Meridian", marca: "Meridian BI" };
+}
+
 function filterSummary(c) {
   const f = c.filters;
   const parts = [`${dateBR(c.bounds.from, false)} a ${dateBR(c.bounds.to, false)}`];
@@ -113,10 +117,10 @@ export function exportPDF(c) {
     <div class="r-head">
       <div>
         <h1>Relatório Executivo · Compras &amp; Fornecedores</h1>
-        <p>Grupo Meridian · ${esc(filterSummary(c))}</p>
+        <p>${esc(brand().nome)} · ${esc(filterSummary(c))}</p>
       </div>
       <div style="text-align:right">
-        <div style="font-size:9pt;font-weight:600">Meridian BI</div>
+        <div style="font-size:9pt;font-weight:600">${esc(brand().marca)}</div>
         <div style="font-size:8pt;color:#6b6478">${new Date().toLocaleString("pt-BR")}</div>
       </div>
     </div>
@@ -125,7 +129,7 @@ export function exportPDF(c) {
       ${rk("Spend no período", brl(k.spend), `${num(k.orders)} pedidos`)}
       ${rk("Economia obtida", brl(k.saving), `${pct(k.savingRate)} sobre o spend`)}
       ${rk("Aderência ao orçamento", pct(k.adherence, 0), `orçado ${brl(k.budget)}`)}
-      ${rk("OTIF", pct(k.otif), "meta 90%")}
+      ${rk("OTIF", pct(k.otif), `meta ${pct(store.metas.otif, 0)}`)}
       ${rk("Lead time médio", `${num(k.leadTime, 1)} d`, `atraso médio ${num(k.avgDelay, 1)} d`)}
       ${rk("Fornecedores ativos", num(k.suppliersCount), `top 5 = ${pct(k.top5Share, 0)}`)}
       ${rk("Cobertura contratual", pct(k.contractShare, 0), "do spend")}
@@ -160,7 +164,7 @@ export function exportPDF(c) {
       <thead><tr><th>Fornecedor</th><th>Categoria</th><th class="r">Spend</th><th class="r">Pedidos</th><th class="r">OTIF</th><th class="r">Atraso</th><th class="r">Defeitos</th><th class="r">Score</th><th>Risco</th></tr></thead>
       <tbody>${topSup.map((s) => `<tr><td>${esc(s.nome)}</td><td>${esc(s.categoria)}</td><td class="r">${brl(s.spend)}</td><td class="r">${s.orders}</td><td class="r">${pct(s.otif)}</td><td class="r">${num(s.delay, 1)} d</td><td class="r">${pct(s.defectRate, 2)}</td><td class="r">${s.score == null ? "—" : s.score.toFixed(1)}</td><td>${esc(s.risco)}</td></tr>`).join("")}</tbody>
     </table>
-    <div class="r-foot"><span>Top 10 fornecedores por spend · score = prazo 35% + qualidade 25% + preço 25% + conformidade 15%</span><span>Meridian BI · página 1/2</span></div>
+    <div class="r-foot"><span>Top 10 fornecedores por spend · score = prazo 35% + qualidade 25% + preço 25% + conformidade 15%</span><span>${esc(brand().marca)} · página 1/2</span></div>
   </div>
 
   <div class="rpage">
@@ -170,8 +174,8 @@ export function exportPDF(c) {
     </div>
 
     <div class="r-section">3. Prazos e qualidade</div>
-    <div class="r-box"><h3>OTIF mensal vs. meta de 90%</h3>
-      ${lineChart({ labels: c.months, series: [{ name: "OTIF", color: PALETTE.mint, values: c.months.map((m) => { const rows = c.pedidos.filter((p) => delivered(p) && p.mes === m); return rows.length ? rows.reduce((s, p) => s + p.otif, 0) / rows.length : null; }) }], height: 180, yFmt: (v) => pct(v, 0), target: { value: 0.9, label: "meta" }, yMax: 1 })}</div>
+    <div class="r-box"><h3>OTIF mensal vs. meta de ${pct(store.metas.otif, 0)}</h3>
+      ${lineChart({ labels: c.months, series: [{ name: "OTIF", color: PALETTE.mint, values: c.months.map((m) => { const rows = c.pedidos.filter((p) => delivered(p) && p.mes === m); return rows.length ? rows.reduce((s, p) => s + p.otif, 0) / rows.length : null; }) }], height: 180, yFmt: (v) => pct(v, 0), target: { value: store.metas.otif, label: "meta" }, yMax: 1 })}</div>
     <div class="r-grid" style="margin-top:10px">
       <div class="r-box"><h3>Fornecedores com pior OTIF</h3>
         <table class="r-table">
@@ -193,7 +197,7 @@ export function exportPDF(c) {
       <thead><tr><th style="width:38%">Tema</th><th>Recomendação</th></tr></thead>
       <tbody>
         ${c.suppliers.filter((s) => s.risco === "Alto").slice(0, 3).map((s) => `<tr><td>Fornecedor de alto risco: ${esc(s.nome)}</td><td>${brl(s.spend)} em risco · OTIF ${pct(s.otif)} · revisar homologação, garantias e plano de contingência.</td></tr>`).join("")}
-        ${c.cats.filter((x) => x.otif != null && x.otif < 0.85).slice(0, 3).map((x) => `<tr><td>OTIF abaixo de 85% em ${esc(x.nome)}</td><td>${pct(x.otif)} de OTIF com lead time de ${num(x.lead, 1)} dias · reforçar SLA e estoque de segurança.</td></tr>`).join("")}
+        ${c.cats.filter((x) => x.otif != null && x.otif < store.metas.otifCriticoCategoria).slice(0, 3).map((x) => `<tr><td>OTIF abaixo de ${pct(store.metas.otifCriticoCategoria, 0)} em ${esc(x.nome)}</td><td>${pct(x.otif)} de OTIF com lead time de ${num(x.lead, 1)} dias · reforçar SLA e estoque de segurança.</td></tr>`).join("")}
         ${c.prices.categorias.filter((x) => x.variacao > 0.03).slice(0, 3).map((x) => `<tr><td>Pressão de preços em ${esc(x.nome)}</td><td>${signedPct(x.variacao)} em 12 meses · antecipar renovação contratual e buscar fornecedor alternativo.</td></tr>`).join("")}
         <tr><td>Cobertura contratual</td><td>${pct(1 - k.contractShare)} do spend fora de contrato · ampliar catálogo e acordos para reduzir compras avulsas.</td></tr>
         <tr><td>Concentração de fornecimento</td><td>Top 5 concentram ${pct(k.top5Share, 0)} do spend (HHI ${num(k.hhi, 0)}) · desenvolver segundo fornecedor nas categorias críticas.</td></tr>
@@ -202,7 +206,7 @@ export function exportPDF(c) {
 
     <div class="r-foot">
       <span>Fonte: camada gold (pedidos, cotações, preços e orçamento) · modelo estrela · atualizado em ${store.loadedAt ? store.loadedAt.toLocaleDateString("pt-BR") : "—"}</span>
-      <span>Meridian BI · página 2/2</span>
+      <span>${esc(brand().marca)} · página 2/2</span>
     </div>
   </div>`;
 

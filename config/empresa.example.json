@@ -1,0 +1,204 @@
+{
+  "versao": 1,
+  "empresa": {
+    "nome": "Grupo Meridian",
+    "marca": "Meridian BI",
+    "subtitulo": "Procurement Suite",
+    "moeda": "BRL",
+    "locale": "pt-BR"
+  },
+  "metas": {
+    "otif": 0.9,
+    "saving": 0.06,
+    "aderencia": 1.0,
+    "coberturaContrato": 0.85,
+    "cotacoesPorRequisicao": 3,
+    "hhiCompetitivo": 1500,
+    "hhiModerado": 2500,
+    "alertaContratoDias": 90,
+    "reajusteLimite": 5,
+    "otifCriticoCategoria": 0.85,
+    "scoreMinimo": 70
+  },
+  "limites": {
+    "linhasUpload": 5000,
+    "tamanhoUploadMb": 5
+  },
+  "origem": {
+    "descricao": "Exportação do ERP de compras (SAP MM, Oracle Purchasing, TOTVS etc.)",
+    "delimitador": ";",
+    "codificacao": "utf-8",
+    "decimal": "pt-BR",
+    "formatoData": "dd/mm/aaaa",
+    "tabelas": {
+      "fato_pedidos": {
+        "arquivo": "pedidos.csv",
+        "colunas": {
+          "id_pedido": "Numero do pedido",
+          "id_requisicao": "Requisicao",
+          "data_emissao": "Data de emissao",
+          "id_fornecedor": "Codigo do fornecedor",
+          "id_item": "Codigo do material",
+          "id_categoria": "Categoria de compra",
+          "id_comprador": "Comprador",
+          "id_unidade": "Centro",
+          "quantidade": "Quantidade",
+          "valor_unitario": "Preco unitario",
+          "valor_total": "Valor total",
+          "preco_referencia": "Preco de referencia",
+          "status": "Status do pedido",
+          "data_entrega_prevista": "Data de entrega prevista",
+          "data_entrega_real": "Data de entrega real",
+          "qtd_recebida": "Quantidade recebida",
+          "qtd_defeito": "Quantidade com defeito",
+          "tem_contrato": "Pedido com contrato"
+        },
+        "valoresFixos": {
+          "modalidade": "ERP"
+        },
+        "traducoes": {
+          "status": {
+            "ENTREGUE": "Entregue",
+            "EM TRANSITO": "Em trânsito",
+            "EM TRÂNSITO": "Em trânsito",
+            "PARCIAL": "Parcial",
+            "ATRASADO": "Atrasado",
+            "CANCELADO": "Cancelado"
+          },
+          "tem_contrato": {
+            "SIM": 1,
+            "S": 1,
+            "X": 1,
+            "NAO": 0,
+            "NÃO": 0,
+            "N": 0
+          }
+        }
+      },
+      "dim_fornecedores": {
+        "arquivo": "fornecedores.csv",
+        "opcional": true,
+        "colunas": {
+          "id_fornecedor": "Codigo",
+          "razao_social": "Razao social",
+          "id_categoria": "Categoria principal",
+          "uf": "UF",
+          "porte": "Porte",
+          "status": "Status",
+          "data_homologacao": "Data de homologacao",
+          "prazo_pagamento_dias": "Prazo de pagamento",
+          "iso9001": "ISO 9001",
+          "rating_cadastral": "Rating",
+          "risco": "Risco"
+        }
+      },
+      "dim_itens": {
+        "arquivo": "itens.csv",
+        "opcional": true,
+        "colunas": {
+          "id_item": "Codigo",
+          "descricao": "Descricao",
+          "id_categoria": "Categoria",
+          "unidade_medida": "Unidade",
+          "preco_referencia": "Preco de referencia",
+          "criticidade": "Criticidade"
+        }
+      },
+      "dim_unidades": {
+        "arquivo": "unidades.csv",
+        "opcional": true,
+        "colunas": {
+          "id_unidade": "Codigo",
+          "unidade": "Nome",
+          "cidade": "Cidade",
+          "uf": "UF",
+          "tipo": "Tipo"
+        }
+      },
+      "dim_compradores": {
+        "arquivo": "compradores.csv",
+        "opcional": true,
+        "colunas": {
+          "id_comprador": "Codigo",
+          "comprador": "Nome",
+          "id_unidade": "Centro",
+          "categoria_responsavel": "Categoria"
+        }
+      },
+      "dim_categorias": {
+        "arquivo": "categorias.csv",
+        "opcional": true,
+        "colunas": {
+          "id_categoria": "Codigo",
+          "categoria": "Nome",
+          "grupo": "Grupo",
+          "criticidade": "Criticidade",
+          "natureza": "Natureza",
+          "peso_spend": "Peso no spend",
+          "drift_mensal": "Inflacao mensal",
+          "lead_time_base_dias": "Lead time"
+        }
+      },
+      "fato_cotacoes": {
+        "arquivo": "cotacoes.csv",
+        "opcional": true,
+        "colunas": {
+          "id_requisicao": "Requisicao",
+          "data_cotacao": "Data",
+          "id_item": "Material",
+          "id_categoria": "Categoria",
+          "id_fornecedor": "Fornecedor",
+          "quantidade": "Quantidade",
+          "preco_unitario": "Preco unitario",
+          "frete": "Frete",
+          "valor_total": "Valor total",
+          "prazo_entrega_dias": "Prazo de entrega",
+          "prazo_pagamento_dias": "Prazo de pagamento",
+          "selecionada": "Vencedora",
+          "preco_referencia": "Preco de referencia"
+        },
+        "traducoes": {
+          "selecionada": { "SIM": 1, "S": 1, "X": 1, "NAO": 0, "NÃO": 0, "N": 0 }
+        }
+      },
+      "dim_contratos": {
+        "arquivo": "contratos.csv",
+        "opcional": true,
+        "colunas": {
+          "id_contrato": "Numero",
+          "id_fornecedor": "Fornecedor",
+          "id_categoria": "Categoria",
+          "data_inicio": "Inicio",
+          "data_fim": "Fim",
+          "valor_anual": "Valor anual",
+          "reajuste_pct": "Reajuste",
+          "indice_reajuste": "Indice",
+          "status": "Status"
+        }
+      },
+      "fato_orcamento": {
+        "arquivo": "orcamento.csv",
+        "opcional": true,
+        "colunas": {
+          "mes_ref": "Competencia",
+          "id_categoria": "Categoria",
+          "id_unidade": "Centro",
+          "orcamento": "Orcamento",
+          "forecast": "Forecast"
+        }
+      },
+      "fato_precos": {
+        "arquivo": "precos.csv",
+        "opcional": true,
+        "colunas": {
+          "mes_ref": "Competencia",
+          "id_item": "Material",
+          "id_categoria": "Categoria",
+          "preco_medio": "Preco medio",
+          "indice_categoria": "Indice",
+          "variacao_mm_pct": "Variacao mensal"
+        }
+      }
+    }
+  }
+}

@@ -1,127 +1,36 @@
 /* Importação de CSV com validação e recálculo dos indicadores. */
-import { parseCSV, esc, num, brl, dateBR, toast, download, toCSV } from "./util.js";
-import { store, addUploadedOrders, clearUploads, storedUploadsCount, computeOtif } from "./data.js";
+import { esc, num, brl, toast, download, toCSV } from "./util.js";
+import { store, addUploadedOrders, clearUploads, storedUploadsCount } from "./data.js";
+import { normalizeImport, TEMPLATE_HEADER } from "./import-core.js";
 
-const REQUIRED = ["id_pedido", "data_emissao", "id_fornecedor", "id_categoria", "id_item", "id_unidade", "quantidade", "valor_unitario", "valor_total", "status"];
-const STATUS = ["Entregue", "Em trânsito", "Parcial", "Atrasado", "Cancelado"];
+export { TEMPLATE_HEADER };
+
 let pending = null;
 
-const normNum = (v) => {
-  if (v == null || v === "") return NaN;
-  const s = String(v).replace(/[R$\s]/g, "");
-  if (s.includes(",") && s.includes(".")) return Number(s.replace(/\./g, "").replace(",", "."));
-  if (s.includes(",")) return Number(s.replace(",", "."));
-  return Number(s);
-};
-function normDate(v) {
-  const s = String(v || "").trim();
-  let y, m, d;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { [y, m, d] = s.split("-").map(Number); }
-  else {
-    const mm = s.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
-    if (!mm) return "";
-    d = Number(mm[1]); m = Number(mm[2]); y = Number(mm[3]);
-  }
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return "";
-  return dt.toISOString().slice(0, 10);
+/** Em produção o servidor valida e persiste; em demo/GitHub Pages fica no navegador. */
+async function salvarImportacao(rows) {
+  if (!store.api) return { ...addUploadedOrders(rows), local: true };
+  const res = await fetch("../api/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Requested-With": "fetch" },
+    body: JSON.stringify({ rows }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.errors?.[0] || body.erro || `Falha ao importar (${res.status}).`);
+  return { ...body, local: false };
 }
+
+const PAPEIS_IMPORTACAO = ["admin", "analista", "comprador"];
+const podeImportar = () => !store.api || PAPEIS_IMPORTACAO.includes(store.usuario?.papel);
 
 export function validateCSV(text, filename) {
-  const { header, rows } = parseCSV(text);
-  const errors = [], warnings = [];
-  if (!header.length) return { errors: ["Arquivo vazio ou ilegível."], warnings, rows: [], header };
-  const missing = REQUIRED.filter((c) => !header.includes(c));
-  if (missing.length) errors.push(`Colunas obrigatórias ausentes: ${missing.join(", ")}.`);
-  if (errors.length) return { errors, warnings, rows: [], header, filename };
-
-  const maxDate = store.maxDate;
-  const minDate = store.minDate || "2000-01-01";
-  const now = new Date();
-  const maxAllowed = new Date(Date.UTC(now.getUTCFullYear() + 2, now.getUTCMonth(), now.getUTCDate()))
-    .toISOString().slice(0, 10);
-  const seen = new Set();
-  const out = [];
-
-  rows.forEach((r, idx) => {
-    const line = idx + 2;
-    const o = {};
-    header.forEach((h, i) => { o[h] = (r[i] ?? "").trim(); });
-    const id = o.id_pedido;
-    if (!id) { errors.push(`Linha ${line}: id_pedido vazio.`); return; }
-    if (seen.has(id)) { errors.push(`Linha ${line}: id_pedido duplicado (${id}).`); return; }
-    seen.add(id);
-
-    const data = normDate(o.data_emissao);
-    if (!data) { errors.push(`Linha ${line}: data_emissao inválida.`); return; }
-    if (data < minDate || data > maxAllowed) warnings.push(`Linha ${line}: data fora da janela histórica (${dateBR(data)}).`);
-
-    if (!store.idx.fById.has(o.id_fornecedor)) errors.push(`Linha ${line}: fornecedor inexistente (${o.id_fornecedor}).`);
-    if (!store.idx.cById.has(o.id_categoria)) errors.push(`Linha ${line}: categoria inexistente (${o.id_categoria}).`);
-    if (!store.idx.iById.has(o.id_item)) errors.push(`Linha ${line}: item inexistente (${o.id_item}).`);
-    if (!store.idx.uById.has(o.id_unidade)) errors.push(`Linha ${line}: unidade inexistente (${o.id_unidade}).`);
-    if (o.id_comprador && !store.idx.kById.has(o.id_comprador)) warnings.push(`Linha ${line}: comprador desconhecido (${o.id_comprador}).`);
-
-    const qtd = normNum(o.quantidade);
-    const unit = normNum(o.valor_unitario);
-    const total = normNum(o.valor_total);
-    if (!Number.isFinite(qtd) || qtd <= 0) errors.push(`Linha ${line}: quantidade inválida.`);
-    if (!Number.isFinite(unit) || unit <= 0) errors.push(`Linha ${line}: valor_unitario inválido.`);
-    if (!Number.isFinite(total) || total <= 0) errors.push(`Linha ${line}: valor_total inválido.`);
-    else if (Number.isFinite(qtd) && Number.isFinite(unit)) {
-      const calc = qtd * unit;
-      if (Math.abs(calc - total) / total > 0.03) warnings.push(`Linha ${line}: valor_total difere de quantidade × valor_unitario em ${((total / calc - 1) * 100).toFixed(1)}%.`);
-    }
-
-    const status = STATUS.includes(o.status) ? o.status : "Entregue";
-    if (o.status && !STATUS.includes(o.status)) warnings.push(`Linha ${line}: status "${o.status}" não reconhecido — assumido "Entregue".`);
-
-    const prev = normDate(o.data_entrega_prevista) || data;
-    const real = normDate(o.data_entrega_real);
-    const atraso = real && prev ? Math.max(0, Math.round((new Date(real) - new Date(prev)) / 864e5)) : 0;
-    const item = store.idx.iById.get(o.id_item);
-    const ref = normNum(o.preco_referencia) || item?.preco_referencia || unit;
-    const received = normNum(o.qtd_recebida) || (status === "Entregue" || status === "Atrasado" ? qtd : 0);
-    const defects = normNum(o.qtd_defeito) || 0;
-    const otif = computeOtif({
-      status, atraso_dias: atraso, qtd_recebida: received, quantidade: qtd, qtd_defeito: defects,
-    });
-    const mes = data.slice(0, 7);
-
-    out.push({
-      ...o,
-      data_emissao: data,
-      mes_ref: mes,
-      mes,
-      ano: mes.slice(0, 4),
-      quantidade: qtd,
-      valor_unitario: unit,
-      valor_total: total,
-      frete: normNum(o.frete) || 0,
-      preco_referencia: ref,
-      saving_valor: (ref - unit) * qtd,
-      tem_contrato: Number(o.tem_contrato) === 1 ? 1 : 0,
-      data_entrega_prevista: prev,
-      data_entrega_real: real,
-      atraso_dias: atraso,
-      qtd_recebida: received,
-      qtd_defeito: defects,
-      otif,
-      nota_qualidade: normNum(o.nota_qualidade) || 4,
-      status,
-      modalidade: o.modalidade || "Importado",
-      id_comprador: o.id_comprador || store.dim.compradores[0].id_comprador,
-      id_requisicao: o.id_requisicao || `REQ-IMP-${id}`,
-    });
+  return normalizeImport({
+    text, filename,
+    dims: store.dim,
+    minDate: store.minDate,
+    maxDate: store.maxDate,
+    maxRows: store.limites?.linhasUpload || 5000,
   });
-
-  if (rows.length > 5000) errors.push("Limite de 5.000 linhas por arquivo excedido.");
-  if (dataMax(out) > maxDate) warnings.push(`Há pedidos após a competência atual da base (${dateBR(maxDate, false)}); o período padrão não os exibirá.`);
-  return { errors, warnings, rows: out, header, filename };
-}
-
-function dataMax(rows) {
-  return rows.reduce((m, r) => (r.data_emissao > m ? r.data_emissao : m), "0");
 }
 
 function renderValidation(v) {
@@ -142,7 +51,8 @@ function renderValidation(v) {
 
 function handleFile(file) {
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { toast("Arquivo acima de 5 MB.", "bad"); return; }
+  if (!podeImportar()) { toast("Seu papel permite consultar, mas não importar dados.", "bad"); return; }
+  if (file.size > (store.limites?.tamanhoUploadMb || 5) * 1024 * 1024) { toast(`Arquivo acima de ${store.limites?.tamanhoUploadMb || 5} MB.`, "bad"); return; }
   const reader = new FileReader();
   reader.onload = () => {
     const v = validateCSV(String(reader.result), file.name);
@@ -152,12 +62,6 @@ function handleFile(file) {
   };
   reader.readAsText(file, "utf-8");
 }
-
-export const TEMPLATE_HEADER = [
-  "id_pedido", "id_requisicao", "data_emissao", "id_fornecedor", "id_item", "id_categoria",
-  "id_comprador", "id_unidade", "quantidade", "valor_unitario", "frete", "valor_total",
-  "preco_referencia", "status", "data_entrega_prevista", "data_entrega_real", "qtd_recebida", "qtd_defeito", "tem_contrato",
-];
 
 function addDaysISO(iso, days) {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -171,7 +75,7 @@ export function initUpload(onChange) {
   const input = document.getElementById("file-input");
   const drop = document.getElementById("drop");
 
-  if (!clickBound) document.addEventListener("click", (e) => {
+  if (!clickBound) document.addEventListener("click", async (e) => {
     const action = e.target.closest("[data-action]")?.dataset.action;
     if (action === "pick-file") { document.getElementById("file-input")?.click(); }
     if (action === "download-template") {
@@ -193,10 +97,19 @@ export function initUpload(onChange) {
     }
     if (action === "apply-upload") {
       if (!pending) return;
-      const res = addUploadedOrders(pending);
-      toast(`Importação aplicada: ${res.novos} novos, ${res.atualizados} atualizados.`, "good");
-      pending = null;
-      onChange?.();
+      if (!podeImportar()) { toast("Seu papel permite consultar, mas não importar dados.", "bad"); return; }
+      const btn = e.target.closest("[data-action]");
+      if (btn) btn.disabled = true;
+      try {
+        const res = await salvarImportacao(pending);
+        toast(`Importação aplicada: ${res.novos} novos, ${res.atualizados} atualizados${res.local ? " (neste navegador)" : " (salva no servidor)"}.`, "good");
+        pending = null;
+        await onChange?.();
+      } catch (err) {
+        console.error(err);
+        toast(`Falha ao salvar importação: ${err.message}`, "bad");
+        if (btn) btn.disabled = false;
+      }
     }
     if (action === "cancel-upload") {
       pending = null;
@@ -204,10 +117,18 @@ export function initUpload(onChange) {
       if (el) el.innerHTML = "";
     }
     if (action === "clear-uploads") {
-      if (!storedUploadsCount()) { toast("Nenhuma importação local para remover."); return; }
-      clearUploads();
-      toast("Importações locais removidas.");
-      onChange?.();
+      if (store.api && !confirm("Remover todas as importações persistidas no servidor? A operação fica registrada na auditoria.")) return;
+      if (!storedUploadsCount() && !store.api) { toast("Nenhuma importação local para remover."); return; }
+      const remover = async () => {
+        if (store.api) {
+          const res = await fetch("../api/import", { method: "DELETE", headers: { "X-Requested-With": "fetch" } });
+          if (!res.ok) throw new Error(`falha ${res.status}`);
+        }
+        clearUploads();
+        toast("Importações removidas.");
+        onChange?.();
+      };
+      remover().catch((err) => toast(`Falha ao remover importações: ${err.message}`, "bad"));
     }
   }), clickBound = true;
 

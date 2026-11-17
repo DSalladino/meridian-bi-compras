@@ -1,0 +1,34 @@
+name: meridian-bi-prod
+
+services:
+  app:
+    build: .
+    image: meridian-bi:latest
+    container_name: meridian-bi
+    restart: unless-stopped
+    ports:
+      - "${MERIDIAN_PORT:-4173}:4173"
+    environment:
+      PORT: 4173
+      # Troque no primeiro boot e faça login para trocar a senha.
+      MERIDIAN_BOOTSTRAP_ADMIN: "${MERIDIAN_BOOTSTRAP_ADMIN:-}"
+      # Gere com: openssl rand -base64 48
+      MERIDIAN_SESSION_SECRET: "${MERIDIAN_SESSION_SECRET:?defina MERIDIAN_SESSION_SECRET no .env}"
+      MERIDIAN_SECURE_COOKIE: "${MERIDIAN_SECURE_COOKIE:-0}"
+      MERIDIAN_TRUST_PROXY: "${MERIDIAN_TRUST_PROXY:-0}"
+      MERIDIAN_SESSION_HOURS: "${MERIDIAN_SESSION_HOURS:-8}"
+    volumes:
+      - meridian_data:/app/data
+      - meridian_config:/app/config
+      - meridian_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4173/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  meridian_data:
+  meridian_config:
+  meridian_logs:

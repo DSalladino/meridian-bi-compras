@@ -1,0 +1,16 @@
+node_modules
+.git
+.github
+_tmp
+_site
+etl/out
+logs
+data/imported
+data/backups
+config/usuarios.json
+config/empresa.json
+.secrets
+*.log
+*.pbix
+*.pbit
+docs/capturas

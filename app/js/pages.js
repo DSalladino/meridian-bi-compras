@@ -6,12 +6,16 @@ import {
 import {
   store, periodBounds, prevBounds, applyFilters, monthsBetween, kpis, spendByMonth,
   budgetByMonth, byCategory, supplierScorecards, priceStats,
-  quoteStats, validSpend, delivered, storedUploadsCount, DATA_MODES, contractsOverview,
+  quoteStats, validSpend, delivered, storedUploadsCount, uploadsCount, DATA_MODES, contractsOverview,
 } from "./data.js";
 import { forecastSpend, simulateRenegotiation, supplierClassification } from "./kpi.js";
 import { lineChart, barChart, hbar, donut, scatter, heatmap, radar, gauge, divergingBars, legend } from "./charts.js";
 
 export const ui = { ctx: null, supplier: null, item: null, page: "exec" };
+
+/** Metas vigentes (perfil da empresa). Fallback seguro quando não há config. */
+const M = () => store.metas || {};
+const pctMeta = (key, digits = 0) => pct(M()[key] ?? 0, digits);
 
 /* ------------------------------- helpers --------------------------------- */
 function kpiCard({ label, value, sub = "", delta = null, accent = "mint", foot = "", invert = false, neutral = false }) {
@@ -39,7 +43,12 @@ function table(headers, rows, foot = "") {
 }
 
 const badge = (text, cls = "") => `<span class="badge ${cls}">${esc(text)}</span>`;
-const hhiBand = (v) => (v == null ? "—" : v < 1500 ? "competitivo" : v <= 2500 ? "moderado" : "concentrado");
+const hhiBand = (v) => {
+  if (v == null) return "—";
+  const competitive = M().hhiCompetitivo ?? 1500;
+  const moderate = M().hhiModerado ?? 2500;
+  return v < competitive ? "competitivo" : v <= moderate ? "moderado" : "concentrado";
+};
 const riskBadge = (r) => badge(r || "—", r === "Baixo" ? "mint" : r === "Médio" ? "butter" : "blush");
 const statusBadge = (s) => badge(s, s === "Entregue" ? "mint" : s === "Atrasado" ? "blush" : s === "Cancelado" ? "" : "sky");
 const tdR = (v, cls = "") => `<td class="r ${cls}">${v}</td>`;
@@ -110,9 +119,9 @@ function pageExec(c) {
 
   const kpisHtml = `<div class="kpis">
     ${kpiCard({ label: "Spend no período", value: brl(k.spend), sub: `${num(k.orders)} pedidos`, delta: deltaSpend, accent: "lilac", neutral: true })}
-    ${kpiCard({ label: "Economia obtida", value: brl(k.saving), sub: `${pct(k.savingRate)} do spend · meta 6%`, delta: k.savingDelta, accent: "mint" })}
-    ${kpiCard({ label: "Aderência ao orçamento", value: pct(adher, 0), sub: `${brl(k.budget)} previstos`, delta: adher ? adher - 1 : null, accent: "butter", invert: true })}
-    ${kpiCard({ label: "OTIF", value: pct(k.otif), sub: "meta 90% · prazo + completo", delta: k.otif - k.otifPrev, accent: "sky" })}
+    ${kpiCard({ label: "Economia obtida", value: brl(k.saving), sub: `${pct(k.savingRate)} do spend · meta ${pctMeta("saving", 1)}`, delta: k.savingDelta, accent: "mint" })}
+    ${kpiCard({ label: "Aderência ao orçamento", value: pct(adher, 0), sub: `${brl(k.budget)} previstos · meta ≤ ${pctMeta("aderencia")}`, delta: adher ? adher - 1 : null, accent: "butter", invert: true })}
+    ${kpiCard({ label: "OTIF", value: pct(k.otif), sub: `meta ${pctMeta("otif")} · prazo + completo`, delta: k.otif - k.otifPrev, accent: "sky" })}
     ${kpiCard({ label: "Lead time médio", value: `${num(k.leadTime, 1)}<small> dias</small>`, sub: `atraso médio ${num(k.avgDelay, 1)} d`, delta: k.leadTimePrev ? k.leadTime / k.leadTimePrev - 1 : null, accent: "sage", invert: true })}
     ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)} (${hhiBand(k.hhi)}) · ${k.suppliersCount} forn.`, accent: "blush" })}
   </div>`;
@@ -182,10 +191,10 @@ function buildInsights(c) {
   const out = [];
   const top = cats[0];
   if (top) out.push({ kind: "info", icon: "◎", title: `${top.nome} concentra ${pct(top.share, 0)} do spend`, text: `${brl(top.spend)} em ${top.orders} pedidos, com OTIF de ${top.otif == null ? "—" : pct(top.otif)} e lead time médio de ${num(top.lead, 1)} dias.` });
-  if (k.otif < 0.9) out.push({ kind: "warn", icon: "!", title: `OTIF abaixo da meta (${pct(k.otif)})`, text: `${num(k.lateShare * 100, 0)}% dos pedidos entregues atrasaram; atraso médio de ${num(k.avgDelay, 1)} dias e P90 de ${num(k.p90Delay, 0)} dias.` });
-  else out.push({ kind: "", icon: "✓", title: `OTIF dentro da meta (${pct(k.otif)})`, text: `Prazo e completude acima do alvo de 90%, com atraso médio de ${num(k.avgDelay, 1)} dias.` });
-  if (k.hhi > 1500 || k.top5Share > 0.4) out.push({ kind: "warn", icon: "◈", title: `Risco de concentração: top 5 = ${pct(k.top5Share, 0)}`, text: `HHI de ${num(k.hhi, 0)} (${hhiBand(k.hhi)}). Avaliar segundo fornecedor homologado por categoria crítica.` });
-  if (k.savingRate < 0.06) out.push({ kind: "warn", icon: "↓", title: `Economia de ${pct(k.savingRate)} abaixo da meta`, text: `Faltam ${brl(k.spend * 0.06 - k.saving)} para atingir 6% do spend no período.` });
+  if (k.otif < (M().otif ?? 0.9)) out.push({ kind: "warn", icon: "!", title: `OTIF abaixo da meta (${pct(k.otif)})`, text: `${num(k.lateShare * 100, 0)}% dos pedidos entregues atrasaram; atraso médio de ${num(k.avgDelay, 1)} dias e P90 de ${num(k.p90Delay, 0)} dias.` });
+  else out.push({ kind: "", icon: "✓", title: `OTIF dentro da meta (${pct(k.otif)})`, text: `Prazo e completude acima do alvo de ${pctMeta("otif")}, com atraso médio de ${num(k.avgDelay, 1)} dias.` });
+  if (k.hhi > (M().hhiCompetitivo ?? 1500) || k.top5Share > 0.4) out.push({ kind: "warn", icon: "◈", title: `Risco de concentração: top 5 = ${pct(k.top5Share, 0)}`, text: `HHI de ${num(k.hhi, 0)} (${hhiBand(k.hhi)}). Avaliar segundo fornecedor homologado por categoria crítica.` });
+  if (k.savingRate < (M().saving ?? 0.06)) out.push({ kind: "warn", icon: "↓", title: `Economia de ${pct(k.savingRate)} abaixo da meta`, text: `Faltam ${brl(k.spend * (M().saving ?? 0.06) - k.saving)} para atingir ${pctMeta("saving", 1)} do spend no período.` });
   const maverick = 1 - k.contractShare;
   if (maverick > 0.12) out.push({ kind: "bad", icon: "⚠", title: `${pct(maverick, 0)} do spend fora de contrato`, text: `Compras sem cobertura contratual reduzem alavancagem e previsibilidade. Priorizar catálogo e acordos vigentes.` });
   const risky = suppliers.filter((s) => s.risco === "Alto").reduce((a, s) => a + s.spend, 0);
@@ -254,9 +263,9 @@ function pageCotacoes(c) {
 
   const kpisHtml = `<div class="kpis">
     ${kpiCard({ label: "Requisições cotadas", value: num(q.requisicoes), sub: `${num(q.cotacoes)} propostas recebidas`, accent: "lilac" })}
-    ${kpiCard({ label: "Cotações por requisição", value: num(q.perReq, 2), sub: "mínimo recomendado: 3", accent: "sky" })}
+    ${kpiCard({ label: "Cotações por requisição", value: num(q.perReq, 2), sub: `mínimo recomendado: ${M().cotacoesPorRequisicao ?? 3}`, accent: "sky" })}
     ${kpiCard({ label: "Economia capturada", value: brl(q.saving), sub: `${pct(q.savingRate)} sobre o preço de referência`, accent: "mint" })}
-    ${kpiCard({ label: "Compras competitivas", value: pct(q.competitiveShare, 0), sub: "requisições com 3+ propostas", accent: "sage" })}
+    ${kpiCard({ label: "Compras competitivas", value: pct(q.competitiveShare, 0), sub: `requisições com ${M().cotacoesPorRequisicao ?? 3}+ propostas`, accent: "sage" })}
     ${kpiCard({ label: "Aderência ao menor preço", value: pct(q.bestPriceShare, 0), sub: "decisões pelo menor total", accent: "butter" })}
     ${kpiCard({ label: "Spread médio das propostas", value: pct(q.avgSpread, 0), sub: "diferença entre maior e menor", accent: "blush" })}
   </div>`;
@@ -268,7 +277,7 @@ function pageCotacoes(c) {
     <div class="srow"><span>Economia gerada</span><strong class="num" style="color:#3f7d63">${brl(q.saving)}</strong></div>
   </div>
   <div class="hdivider"></div>
-  <div class="tiny muted">Gauge de economia sobre o baseline de referência (meta 6%).</div>`;
+  <div class="tiny muted">Gauge de economia sobre o baseline de referência (meta ${pctMeta("saving", 1)}).</div>`;
 
   const qTable = c.cotacoes.slice(0, 80).map((x) => {
     const dev = x.preco_referencia ? x.preco_unitario / x.preco_referencia - 1 : null;
@@ -290,7 +299,7 @@ function pageCotacoes(c) {
   <div class="grid">
     ${card("col-8", "Economia por categoria", "Valor absoluto capturado na negociação",
       hbar({ items: savingsByCat, labelWidth: 205, color: PALETTE.mint }) + `<div class="legend"><span><i style="background:${PALETTE.mint}"></i>Savings sobre preço de referência</span></div>`)}
-    ${card("col-4", "Funil de negociação", "Da requisição ao resultado capturado", executive + `<div style="display:grid;place-items:center;margin-top:6px">${gauge({ value: Math.min(q.savingRate / 0.06, 1), max: 1, label: pct(q.savingRate), sub: "meta 6,0%", color: PALETTE.mint, size: 190 })}</div>`)}
+    ${card("col-4", "Funil de negociação", "Da requisição ao resultado capturado", executive + `<div style="display:grid;place-items:center;margin-top:6px">${gauge({ value: Math.min(q.savingRate / (M().saving ?? 0.06), 1), max: 1, label: pct(q.savingRate), sub: `meta ${pctMeta("saving", 1)}`, color: PALETTE.mint, size: 190 })}</div>`)}
     ${card("col-7", "Preço vencedor vs preço de referência", "Pontos abaixo da diagonal indicam negociação acima do baseline de mercado",
       scatter({
         points: win.slice(0, 900).map((x) => ({
@@ -335,7 +344,7 @@ function pageFornecedores(c) {
     ${kpiCard({ label: "Fornecedores ativos", value: num(k.suppliersCount), sub: `${num(suppliers.filter((s) => s.risco === "Alto").length)} de alto risco`, accent: "lilac" })}
     ${kpiCard({ label: "Concentração top 5", value: pct(k.top5Share, 0), sub: `HHI ${num(k.hhi, 0)} (${hhiBand(k.hhi)})`, accent: "blush" })}
     ${kpiCard({ label: "Rating cadastral médio", value: num(ratingAvg, 1), sub: "escala 0–100", accent: "sky" })}
-    ${kpiCard({ label: "Cobertura contratual", value: pct(k.contractShare, 0), sub: "spend com contrato vigente", accent: "mint" })}
+    ${kpiCard({ label: "Cobertura contratual", value: pct(k.contractShare, 0), sub: `spend com contrato vigente · meta ${pctMeta("coberturaContrato", 0)}`, accent: "mint" })}
     ${kpiCard({ label: "Score médio ponderado", value: num(avg(scored, (s) => s.score), 1), sub: `${scored.length} fornecedores com histórico suficiente`, accent: "sage" })}
     ${kpiCard({ label: "Fornecedores exclusivos", value: num(suppliers.filter((s) => s.orders >= 3 && s.spend / (k.spend || 1) > 0.02).length), sub: "acima de 2% do spend", accent: "butter" })}
   </div>`;
@@ -362,7 +371,7 @@ function pageFornecedores(c) {
   <div style="text-align:center;margin-top:4px">
     <div style="font-size:13px;font-weight:650">${esc(focus.nome)}</div>
     <div class="tiny muted">${esc(focus.categoria)} · ${esc(focus.uf || "")} · score ${focus.score == null ? "sem histórico" : focus.score.toFixed(1)} · ${esc(supplierClassification(focus.score))}</div>
-    <div style="margin-top:6px">${riskBadge(focus.risco)} ${badge(`OTIF ${pct(focus.otif)}`, focus.otif == null ? "sky" : focus.otif >= 0.9 ? "mint" : "blush")}</div>
+    <div style="margin-top:6px">${riskBadge(focus.risco)} ${badge(`OTIF ${pct(focus.otif)}`, focus.otif == null ? "sky" : focus.otif >= (M().otif ?? 0.9) ? "mint" : "blush")}</div>
   </div>
   <div class="hdivider"></div>
   <div class="small-grid">
@@ -456,7 +465,7 @@ function pagePrazos(c) {
     });
 
   const kpisHtml = `<div class="kpis">
-    ${kpiCard({ label: "OTIF", value: pct(k.otif), sub: "meta 90%", delta: k.otif - k.otifPrev, accent: "mint" })}
+    ${kpiCard({ label: "OTIF", value: pct(k.otif), sub: `meta ${pctMeta("otif")}`, delta: k.otif - k.otifPrev, accent: "mint" })}
     ${kpiCard({ label: "Entregas atrasadas", value: pct(k.lateShare), sub: `${num(del.filter((p) => (p.atraso_dias || 0) > 0).length)} de ${num(del.length)} entregas`, accent: "blush" })}
     ${kpiCard({ label: "Atraso médio", value: `${num(k.avgDelay, 1)}<small> dias</small>`, sub: `P90 de ${num(k.p90Delay, 1)} dias`, accent: "butter" })}
     ${kpiCard({ label: "Lead time médio", value: `${num(k.leadTime, 1)}<small> dias</small>`, sub: "emissão → entrega real", delta: k.leadTimePrev ? k.leadTime / k.leadTimePrev - 1 : null, accent: "sky", invert: true })}
@@ -472,9 +481,9 @@ function pagePrazos(c) {
   return `${kpisHtml}
   <div class="grid">
     ${card("col-8", "OTIF mensal", "Percentual de pedidos entregues no prazo, completos e sem defeito",
-      lineChart({ labels: months, series: [{ name: "OTIF", color: PALETTE.mint, values: otifByMonth }], height: 240, yFmt: (v) => pct(v, 0), target: { value: 0.9, label: "meta 90%" }, yMax: 1 }))}
+      lineChart({ labels: months, series: [{ name: "OTIF", color: PALETTE.mint, values: otifByMonth }], height: 240, yFmt: (v) => pct(v, 0), target: { value: M().otif ?? 0.9, label: `meta ${pctMeta("otif")}` }, yMax: 1 }))}
     ${card("col-4", "Aderência à meta", "OTIF consolidado do período",
-      `<div style="display:grid;place-items:center;padding:6px 0">${gauge({ value: k.otif, max: 1, label: pct(k.otif), sub: "meta 90%", color: k.otif >= 0.9 ? PALETTE.mint : PALETTE.blush, size: 200 })}</div>
+      `<div style="display:grid;place-items:center;padding:6px 0">${gauge({ value: k.otif, max: 1, label: pct(k.otif), sub: `meta ${pctMeta("otif")}`, color: k.otif >= (M().otif ?? 0.9) ? PALETTE.mint : PALETTE.blush, size: 200 })}</div>
        <div class="stat-list">
          <div class="srow"><span>No prazo e completo</span><strong>${num(del.filter((p) => p.otif === 1).length)}</strong></div>
          <div class="srow"><span>Com atraso</span><strong>${num(del.filter((p) => (p.atraso_dias || 0) > 0).length)}</strong></div>
@@ -600,7 +609,7 @@ function pageContratos(c) {
   }
   const kpisHtml = `<div class="kpis">
     ${kpiCard({ label: "Contratos vigentes", value: num(t.vigentes), sub: `${num(t.contratos)} contratos cadastrados`, accent: "mint" })}
-    ${kpiCard({ label: "A vencer em 90 dias", value: num(t.aVencer90), sub: `limite de alerta: 90 dias · média ${num(t.reajusteMedio, 1)}% de reajuste`, accent: "butter" })}
+    ${kpiCard({ label: `A vencer em ${M().alertaContratoDias ?? 90} dias`, value: num(t.aVencer90), sub: `limite de alerta: ${M().alertaContratoDias ?? 90} dias · média ${num(t.reajusteMedio, 1)}% de reajuste`, accent: "butter" })}
     ${kpiCard({ label: "Vencidos com pedido ativo", value: num(t.vencidosComPedidoAtivo), sub: `${brl(t.exposicao)} de exposição`, accent: t.vencidosComPedidoAtivo ? "blush" : "sage" })}
     ${kpiCard({ label: "Valor contratado", value: brl(t.valorContratado), sub: "soma do valor anual dos contratos", accent: "lilac" })}
     ${kpiCard({ label: "Realizado vs. contratado", value: pct(t.valorContratado ? t.realizado / t.valorContratado : null, 0), sub: `${brl(t.realizado)} realizados no período de vigência`, accent: "sky" })}
@@ -649,7 +658,7 @@ function pageContratos(c) {
     ${card("col-12", "Regras de gestão contratual", "Como os alertas são calculados",
       `<div class="stat-list">
         <div class="srow"><span>Vencido com pedido ativo</span><strong>crítico · pedido em aberto após <span class="mono">data_fim</span></strong></div>
-        <div class="srow"><span>A vencer</span><strong>até 90 dias do vencimento</strong></div>
+        <div class="srow"><span>A vencer</span><strong>até ${M().alertaContratoDias ?? 90} dias do vencimento</strong></div>
         <div class="srow"><span>Reajuste acima do limite</span><strong>${num(5, 1)}% · parâmetro do projeto</strong></div>
         <div class="srow"><span>Execução</span><strong>realizado ÷ valor anual · alerta acima de 90%</strong></div>
         <div class="srow"><span>Realizado</span><strong>pedidos do mesmo fornecedor/categoria dentro da vigência</strong></div>
@@ -700,7 +709,7 @@ function pageDados() {
       <div class="hdivider"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" data-action="download-template">Baixar modelo CSV</button>
-        <button class="btn btn-sm btn-ghost" data-action="clear-uploads">Remover importações (${storedUploadsCount()})</button>
+        <button class="btn btn-sm btn-ghost" data-action="clear-uploads">Remover importações (${store.api ? uploadsCount() : storedUploadsCount()})</button>
       </div>
       <p class="tiny muted" style="margin:10px 0 0">A importação valida colunas obrigatórias, tipos, datas, chaves de dimensão e duplicidades. Registros com o mesmo <span class="mono">id_pedido</span> são atualizados; os demais são incluídos e recalculam todos os indicadores.</p>`)}
     ${card("col-5", "Qualidade e atualização", "Resumo da camada analítica",
@@ -708,7 +717,7 @@ function pageDados() {
         <div class="srow"><span>Competência mais recente</span><strong>${monthLabel(store.maxDate.slice(0, 7), true)}</strong></div>
         <div class="srow"><span>Pedidos na base</span><strong class="num">${num(store.fato.pedidos.length)}</strong></div>
         <div class="srow"><span>Cotações na base</span><strong class="num">${num(store.fato.cotacoes.length)}</strong></div>
-        <div class="srow"><span>Importações locais</span><strong class="num">${storedUploadsCount()}</strong></div>
+        <div class="srow"><span>${store.api ? "Importações no servidor" : "Importações locais"}</span><strong class="num">${store.api ? uploadsCount() : storedUploadsCount()}</strong></div>
         <div class="srow"><span>Última carga</span><strong>${store.loadedAt ? store.loadedAt.toLocaleString("pt-BR") : "—"}</strong></div>
         <div class="srow"><span>Fonte de dados</span><strong>${esc(DATA_MODES[store.mode]?.label || store.mode)}</strong></div>
       </div>

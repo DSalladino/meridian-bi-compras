@@ -29,8 +29,9 @@ exportação em Excel/PDF e upload de dados.
 | **Ingestão** | Upload de CSV com validação de schema, chaves, tipos e regras de negócio |
 | **Contratos** | Vencimentos, saldo, realizado vs. contratado, execução, reajuste e exposição por fornecedor |
 | **Planejamento** | Previsão de spend por regressão linear e simulador de renegociação |
-| **Qualidade** | 21 testes Node, testes Python do ETL, reconciliação real painel × SQL e CI no GitHub Actions |
+| **Qualidade** | 35 testes Node, testes Python do ETL, reconciliação real painel × SQL e CI no GitHub Actions |
 | **Modos de dados** | Dataset demo, base vazia e somente importações, com estados vazios reais e preferência salva |
+| **Implantação real** | Perfil por empresa, importação de ERP com mapeamento, login/RBAC, importação persistida, auditoria e Docker |
 
 ---
 
@@ -44,6 +45,12 @@ npm run data       # regenera o dataset a partir da seed 20261116
 npm run test:etl   # testes unitários do pipeline (pandas)
 npm run test:sql   # reconciliação com PostgreSQL (requer DATABASE_URL)
 npm ci && npm run lint   # ESLint (só desenvolvimento: pega código morto e global implícita)
+
+# implantação em uma empresa real (ver docs/08)
+npm run importar -- --novo                    # cria config/empresa.json
+npm run importar -- --origem ./erp --saida data_empresa
+npm run usuarios -- listar                    # usuários do servidor de produção
+npm run start:prod                            # painel com login, RBAC e auditoria
 ```
 
 Requisitos: **Node 20+** para o painel (zero dependências em runtime — ESLint e `globals`
@@ -106,6 +113,58 @@ pode ser anexado à mesma release.
 
 ---
 
+## Levar para uma empresa real
+
+O repositório agora tem o caminho completo de replicação. O roteiro detalhado, com
+checklist de aceitação, backup, LGPD e runbook, está em
+[`docs/08-implantacao-real.md`](docs/08-implantacao-real.md).
+
+```bash
+# 1. perfil da empresa (marca, metas, moeda e mapeamento do ERP)
+npm run importar -- --novo
+
+# 2. exportações do ERP em ./erp, mapeadas em config/empresa.json
+npm run importar -- --origem ./erp --saida data_empresa
+
+# 2b. publicar o dataset no diretório que o painel lê (faça backup do demo antes)
+npm run importar -- --origem ./erp --saida data --forcar
+
+# 3. carga analítica (PostgreSQL) e views de KPI
+python etl/pipeline_etl.py --data-dir data_empresa --dsn "$DATABASE_URL"
+
+# 4. painel com login, papéis, importação persistida e auditoria
+npm run usuarios -- criar --usuario admin --nome "Admin" --papel admin
+npm run start:prod
+```
+
+O importador traduz números `1.234,56`, datas `dd/mm/aaaa`, status em inglês e códigos
+longos; deriva saving, OTIF, atraso e dimensões ausentes; e bloqueia a carga quando há FK,
+duplicidade ou regra de negócio violada. As metas (OTIF, saving, contratos, HHI) deixam de
+ser números fixos e passam a vir de `data/config.json`, usado pelo painel, PDF e carteira.
+
+### Perfil, RBAC e auditoria
+
+- **Perfil por empresa** — `config/empresa.json` define marca, moeda, metas e o mapeamento
+  de cada tabela; `data/config.json` é o que o painel consome.
+- **Login local** — scrypt com salt, cookie `HttpOnly` assinado por HMAC, rate limit de
+  tentativas e sessão expirável. Papéis: admin, analista, comprador e leitor.
+- **Escopo por linha** — usuários podem ser limitados a unidades, categorias e
+  fornecedores; os CSVs de fatos servidos já saem filtrados (cotações herdam a requisição).
+- **Importação persistida** — CSV validado no servidor, gravado com escrita atômica,
+  backup versionado e upsert por `id_pedido`; o navegador deixa de depender do
+  `localStorage` quando o servidor de produção está ativo.
+- **Auditoria** — `logs/auditoria.jsonl` registra login, falha, importação, rejeição e
+  remoção, com usuário, papel, IP e detalhe.
+- **Docker** — `docker compose -f docker-compose.prod.yml up -d --build` sobe o painel com
+  volumes separados para dados, configuração e logs; o PostgreSQL continua no
+  `docker-compose.yml`.
+
+> **Escopo desta camada:** uma empresa por instalação. SSO/OIDC, multiempresa por linha e
+> auditoria de exportações do navegador estão na lista de evolução — e documentados como
+> limite, não como promessa.
+
+---
+
 ## Testes automatizados
 
 O projeto transforma as regras de negócio em testes independentes, em vez de depender de
@@ -121,6 +180,9 @@ inspeção manual:
 | **Exportação** | ZIP/XLSX válido, CRC, XML e escaping de CSV | `npm test` |
 | **ETL** | validação, transformação, frete, saving negativo e recorte incremental | `npm run test:etl` |
 | **SQL** | `vw_kpi_geral`, carteira contratual e checklist de integridade | `npm run test:sql` |
+| **Importação de ERP** | números/datas localizados, tradução de status, derivação de dimensões, PK/FK e saving | `npm test` |
+| **Auth/RBAC** | scrypt, sessão assinada, expiração, rate limit e permissões | `npm test` |
+| **Servidor de produção** | login, escopo por unidade, importação persistida, rejeição e auditoria | `npm test` |
 
 O CI (`.github/workflows/ci.yml`) roda lint, Node, Python e um PostgreSQL 16 real. A publicação
 online usa `.github/workflows/pages.yml`. A matriz completa, casos de borda e o que fica
@@ -220,19 +282,25 @@ A árvore completa de KPIs, fórmulas em SQL/DAX e decisões de definição est�
 
 ```
 ├── app/                  painel analítico (HTML/CSS/JS, sem dependências)
-│   ├── css/theme.css     design tokens pastel, componentes, impressão A4
-│   └── js/               dados, gráficos SVG, páginas, XLSX, PDF, upload
+│   ├── css/theme.css     design tokens pastel, componentes, impressão A4 e login
+│   └── js/               dados, configuração, gráficos SVG, páginas, XLSX, PDF, upload
+│       ├── config.js     perfil, metas e limites por empresa
+│       ├── import-core.js regras de importação compartilhadas painel × servidor
 │       └── kpi.js        regras canônicas de KPI (OTIF, score, contratos, previsão)
+├── config/               perfil de empresa (exemplo versionado; o real fica no .gitignore)
+├── server/               auth (scrypt/sessão) e servidor de produção (RBAC/auditoria)
+├── scripts/              gerador, importador de ERP, usuários, smoke test e reconciliação
 ├── .github/workflows/   CI (Node + ETL + PostgreSQL) e publicação no GitHub Pages
-├── data/                dataset versionado (CSVs com separador ';')
+├── data/                dataset versionado (CSVs ';') + config.json do perfil
 ├── dax/medidas.dax      medidas DAX do modelo Power BI
-├── docs/                arquitetura, modelo, KPIs, decisões, testes e integração
+├── docs/                arquitetura, modelo, KPIs, decisões, testes e implantação real
 ├── etl/                 geração, validação, carga full/incremental e testes Python
 ├── powerbi/             tema pastel, Power Query (CSV/PostgreSQL) e guia do modelo
-├── scripts/             gerador, smoke test, reconciliação SQL e utilitários
 ├── sql/                 DDL, views de KPI, consultas, governança e checklist
-├── tests/               testes Node de KPI, paridade, upload, XLSX e renderização
+├── tests/               KPI, paridade, upload, XLSX, config, ERP, auth e produção
 ├── docker-compose.yml   PostgreSQL 16 local para a integração real
+├── docker-compose.prod.yml  painel de produção com volumes e healthcheck
+├── Dockerfile           imagem Node 24 com seed de dataset/perfil e non-root
 └── server.js            servidor estático local (porta 4173)
 ```
 
@@ -311,8 +379,8 @@ Detalhamento e alternativas descartadas em [`docs/04-decisoes-tecnicas.md`](docs
 
 ## Próximos passos sugeridos
 
-1. **Login e RBAC**: API com sessão `HttpOnly`, Argon2id/scrypt, papéis (admin, analista,
-   comprador, leitor), escopo por unidade/categoria, auditoria de exportações e uploads.
+1. **SSO/OIDC e multiempresa por linha** (`id_empresa` em todas as tabelas), com painel de
+   administração e trilha de auditoria de exportações.
 2. Publicar o modelo no Power BI Service com gateway para o PostgreSQL e atualização agendada
    (passo a passo em [`docs/07-integracao-powerbi.md`](docs/07-integracao-powerbi.md)).
 3. Evoluir a previsão para um modelo sazonal (SARIMA/Prophet) e simulação Monte Carlo de
@@ -321,6 +389,8 @@ Detalhamento e alternativas descartadas em [`docs/04-decisoes-tecnicas.md`](docs
    upsert incremental por chave natural.
 5. Persistir `id_contrato` no pedido para eliminar a ambiguidade em contratos sobrepostos e
    criar SLA de homologação de fornecedores.
+6. Conectar a importação a uma fila (S3 + worker) para arquivos grandes, com validação
+   assíncrona e notificação por e-mail.
 
 ---
 

@@ -56,6 +56,34 @@ NUM_COLS = ["quantidade", "valor_unitario", "frete", "valor_total", "preco_refer
 
 STATUS_PEDIDO = {"Entregue", "Em trânsito", "Parcial", "Atrasado", "Cancelado"}
 
+# Tabelas que uma empresa pode não ter no primeiro ciclo (contratos, cotações,
+# série de preços e orçamento). Ausência gera aviso, não bloqueia a carga.
+OPTIONAL_TABLES = {"dim_contrato", "fato_cotacao", "fato_preco", "fato_orcamento"}
+
+EMPTY_COLUMNS = {
+    "dim_contrato": ["id_contrato", "id_fornecedor", "id_categoria", "data_inicio", "data_fim",
+                     "valor_anual", "reajuste_pct", "indice_reajuste", "status"],
+    "fato_cotacao": ["id_requisicao", "data_cotacao", "id_item", "id_categoria", "id_fornecedor",
+                     "quantidade", "preco_unitario", "frete", "valor_total", "prazo_entrega_dias",
+                     "prazo_pagamento_dias", "selecionada", "preco_referencia"],
+    "fato_preco": ["mes_ref", "id_item", "id_categoria", "preco_medio", "indice_categoria", "variacao_mm_pct"],
+    "fato_orcamento": ["mes_ref", "id_categoria", "id_unidade", "orcamento", "forecast"],
+}
+
+
+def empty_frame(table: str) -> pd.DataFrame:
+    """DataFrame vazio com os tipos corretos, para validar tabelas opcionais."""
+    data = {}
+    for col in EMPTY_COLUMNS[table]:
+        if col in NUM_COLS:
+            data[col] = pd.Series(dtype="float64")
+        elif col in DATE_COLS:
+            data[col] = pd.Series(dtype="datetime64[ns]")
+        else:
+            data[col] = pd.Series(dtype="object")
+    return pd.DataFrame(data)
+
+
 
 @dataclass
 class Report:
@@ -98,6 +126,9 @@ def extract(data_dir: Path) -> dict[str, pd.DataFrame]:
     for table, filename, _ in TABLES:
         path = data_dir / filename
         if not path.exists():
+            if table in OPTIONAL_TABLES:
+                frames[table] = empty_frame(table)
+                continue
             raise FileNotFoundError(f"CSV não encontrado: {path}")
         df = pd.read_csv(path, sep=";", dtype=str, keep_default_na=False, na_values=[""])
         for col in df.columns:
@@ -113,7 +144,8 @@ def validate(frames: dict[str, pd.DataFrame], rep: Report) -> None:
     for table, _, pk in TABLES:
         df = frames[table]
         rep.rows[table] = len(df)
-        rep.add(table, "não vazio", len(df) > 0, f"{len(df)} linhas")
+        rep.add(table, "não vazio", len(df) > 0, f"{len(df)} linhas",
+                severity="warning" if table in OPTIONAL_TABLES else "error")
         if pk:
             dup = int(df[pk].duplicated().sum())
             rep.add(table, "chave primária única", dup == 0, f"{dup} duplicidades em {pk}")
@@ -189,10 +221,18 @@ def validate(frames: dict[str, pd.DataFrame], rep: Report) -> None:
     rep.add("fato_orcamento", "cobertura de todas as combinações mês/categoria/unidade",
             sem_orcamento == 0, f"{sem_orcamento} combinações sem orçamento", severity="warning")
 
-    # Atualidade e volume
-    rep.add("fato_pedido", "competência atual", ped["mes_ref"].max() >= "2026-10",
-            f"máximo {ped['mes_ref'].max()}", severity="warning")
-    rep.add("fato_pedido", "volume mínimo de pedidos", len(ped) >= 1000, f"{len(ped)} pedidos")
+    # Atualidade e volume (avisos: o primeiro ciclo de uma empresa pode ser
+    # menor e a extração pode ter latência de alguns meses).
+    max_mes = pd.to_datetime(ped["mes_ref"].max(), format="%Y-%m", errors="coerce")
+    if pd.isna(max_mes):
+        rep.add("fato_pedido", "competência atual", False, "sem competência válida", severity="warning")
+    else:
+        hoje = pd.Timestamp.now()
+        atraso_meses = (hoje.year - max_mes.year) * 12 + (hoje.month - max_mes.month)
+        rep.add("fato_pedido", "competência atual", atraso_meses <= 2,
+                f"máximo {ped['mes_ref'].max()} ({atraso_meses} mês(es) atrás)", severity="warning")
+    rep.add("fato_pedido", "volume mínimo de pedidos", len(ped) >= 1000,
+            f"{len(ped)} pedidos (base pequena: valide antes de publicar)", severity="warning")
 
     # Duplicidade de propostas por requisição/fornecedor
     dup_cot = int(cot.duplicated(subset=["id_requisicao", "id_fornecedor", "id_item"]).sum())

@@ -2,16 +2,19 @@
   "name": "meridian-bi-compras",
   "version": "1.0.0",
   "private": true,
-  "description": "Solução de BI para compras e gestão de fornecedores — painel analítico, modelo estrela, SQL, DAX e automação ETL.",
+  "description": "Solução de BI para compras e gestão de fornecedores — painel analítico, modelo estrela, SQL, DAX, ETL e implantação corporativa com login, RBAC e importação de ERP.",
   "type": "module",
   "scripts": {
     "start": "node server.js",
     "data": "node scripts/generate_dataset.mjs",
     "check": "node scripts/smoke_test.mjs",
     "lint": "eslint .",
-    "test": "node --test tests/kpi.test.mjs tests/parity.test.mjs tests/upload.test.mjs tests/xlsx.test.mjs tests/render.test.mjs",
+    "test": "node --test tests/kpi.test.mjs tests/parity.test.mjs tests/upload.test.mjs tests/xlsx.test.mjs tests/render.test.mjs tests/config.test.mjs tests/importador.test.mjs tests/auth.test.mjs tests/prod.test.mjs",
     "test:sql": "node scripts/verify_sql_kpis.mjs",
-    "test:etl": "python -m unittest discover -s etl -p \"test_*.py\" -v"
+    "test:etl": "python -m unittest discover -s etl -p \"test_*.py\" -v",
+    "start:prod": "node server/prod.mjs",
+    "importar": "node scripts/importar_erp.mjs",
+    "usuarios": "node scripts/usuarios.mjs"
   },
   "repository": {
     "type": "git",
@@ -31,7 +34,11 @@
     "procurement",
     "dax",
     "postgresql",
-    "etl"
+    "etl",
+    "erp-import",
+    "rbac",
+    "deployment",
+    "multi-company"
   ],
   "author": "Portfólio — Enterprise BI",
   "license": "MIT",

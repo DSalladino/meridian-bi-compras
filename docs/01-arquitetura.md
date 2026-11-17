@@ -102,15 +102,35 @@ O repositório entrega **duas camadas de consumo** sobre o mesmo modelo semânti
 
 ## Segurança e acesso
 
-- Nenhuma credencial no repositório; DSN via `DATABASE_URL`.
+- Nenhuma credencial no repositório; DSN via `DATABASE_URL`. Usuários e segredo de sessão
+  ficam fora do Git (`config/usuarios.json`, `.secrets/`, `logs/`).
 - O servidor estático faz *path traversal check* e envia `X-Content-Type-Options: nosniff`.
-- Dados sintéticos: não há PII real. Em um cenário produtivo, o cadastro de fornecedores
-  (CNPJ, contatos) entraria em colunas mascaradas + controle de acesso por linha no Power BI
-  (RLS por unidade/centro de custo).
-- Upload é local ao navegador; nenhum arquivo é enviado a servidor.
+- Dados sintéticos no demo: não há PII real. Em produção, o servidor de login aplica RBAC e
+  escopo por unidade/categoria/fornecedor na leitura dos fatos; para RLS no Power BI, use
+  unidade/centro de custo como filtro de segurança.
+- No modo demo o upload fica no navegador. No modo produção, o CSV é validado no servidor,
+  gravado atomicamente em `data/imported/`, com backup e registro em `logs/auditoria.jsonl`.
+
+## Camadas de implantação
+
+```
+config/empresa.json ──┐
+./erp (exportações) ──┴─► scripts/importar_erp.mjs ─► CSVs canônicos + config.json
+                                                          │
+                        ┌─────────────────────────────────┴────────────────┐
+                        ▼                                                  ▼
+             Python ETL → PostgreSQL dw                          painel estático
+             Power BI / SQL / DAX                               (login + RBAC + impl.)
+```
+
+O importador isola o formato do ERP do modelo analítico. O servidor de produção
+(`server/prod.mjs`) é opcional para quem já usa Power BI: ele resolve acesso, importação
+compartilhada e auditoria no painel web, sem substituir a camada PostgreSQL.
 
 ## Extensões previstas
 
 - Camada **bronze** com ingestão direta do ERP (CDC) e **silver** com deduplicação.
 - *Feature store* de fornecedores para modelo de risco (prazo × qualidade × financeiro).
-- Publicação do painel como app interno com autenticação SSO e trilha de auditoria.
+- Publicação do painel como app interno com SSO e trilha de auditoria (login local já
+  implementado; SSO/OIDC é o próximo passo).
+- Multiempresa por linha (`id_empresa`) para grupos com vários CNPJs no mesmo banco.

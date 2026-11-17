@@ -14,6 +14,10 @@ materializa o OTIF como coluna gerada.
 | Unitário ETL | `etl/test_pipeline.py` | extração, validação, transformação, frete, saving negativo e recorte `--since` |
 | Integração do painel | `tests/parity.test.mjs` | `kpis()` e `supplierScorecards()` contra as funções canônicas |
 | Ingestão | `tests/upload.test.mjs` | schema, FK, duplicidade, saving negativo e OTIF recalculado |
+| Importação de ERP | `tests/importador.test.mjs` | número/data localizados, tradução de status, derivação de dimensões/preços e validação |
+| Configuração | `tests/config.test.mjs` | metas em fração/percentual, fallback e prazos de contrato |
+| Autenticação | `tests/auth.test.mjs` | scrypt, sessão assinada, expiração, rate limit e cookies |
+| Produção | `tests/prod.test.mjs` | login, RBAC, escopo, importação persistida, rejeição e auditoria |
 | Exportação | `tests/xlsx.test.mjs` | ZIP store-only, CRC, XML do workbook e escaping CSV |
 | Dataset | `scripts/smoke_test.mjs` | 22 verificações de integridade e faixas de KPI |
 | Banco real | `scripts/verify_sql_kpis.mjs` | `vw_kpi_geral`, `vw_contrato_gestao` e `vw_integridade_checklist` |
@@ -22,8 +26,8 @@ materializa o OTIF como coluna gerada.
 
 ```bash
 npm ci && npm run lint   # ESLint (devDependencies)
-npm test                 # 21 testes Node
-npm run check            # smoke test do dataset
+npm test                 # 35 testes Node (KPI, ERP, auth, produção, exportação)
+npm run check            # smoke test do dataset demo
 npm run test:etl         # unittest do ETL (requer pandas)
 npm run test:sql         # requer DATABASE_URL e psql
 ```
@@ -41,6 +45,8 @@ npm run test:sql
 
 ## Casos de borda cobertos
 
+- Número `1.234,56`, data `dd/mm/aaaa`, status em inglês e flag `SIM/NÃO` transformados
+  para o contrato canônico; dimensões ausentes derivadas com aviso explícito.
 - Pedido cancelado com data de entrega: não entra em spend, OTIF ou taxa de defeito.
 - Entrega parcial: nunca é OTIF, mesmo com `atraso_dias = 0`.
 - Saving negativo (sobrepreço): preservado no upload, no ETL e no Power Query.
@@ -62,6 +68,10 @@ npm run test:sql
 O job também falha se uma coluna `NOT NULL` sem default ficar fora da lista de carga do ETL —
 proteção que existe desde que `dw.fato_cotacao.id_cotacao` (PK `IDENTITY`) quebrava a carga
 full no staging.
+
+A camada de produção adiciona um teste de integração HTTP real (`tests/prod.test.mjs`):
+servidor efêmero, login, cookie, escopo por unidade, importação, rejeição, auditoria,
+backup e remoção. Nenhum banco é necessário para esse teste.
 
 A publicação da demonstração é feita por [`pages.yml`](../.github/workflows/pages.yml).
 

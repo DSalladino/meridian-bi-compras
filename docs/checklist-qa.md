@@ -5,7 +5,7 @@ Roteiro rápido de validação antes de publicar uma alteração.
 ## Dados e números
 
 - [ ] `npm run data` roda sem erro e mantém as contagens (3.120 pedidos, 11.416 propostas).
-- [ ] `npm test` passa (KPI, paridade, upload e XLSX).
+- [ ] `npm test` passa (KPI, paridade, upload, XLSX, ERP, auth e produção).
 - [ ] `python etl/pipeline_etl.py --validate-only` retorna 0 erros.
 - [ ] Spend total ≈ R$ 78,9 mi; economia ≈ R$ 6,65 mi (~8,4%); OTIF ≈ 78,6%.
 - [ ] `vw_kpi_geral` concorda com os cartões da Visão executiva (tolerância de arredondamento).
@@ -53,3 +53,15 @@ Roteiro rápido de validação antes de publicar uma alteração.
 - [ ] Contraste de texto ≥ 4,5:1 nos cartões.
 - [ ] Gráficos têm título e leitura textual (eixo, legenda, tooltip).
 - [ ] Layout de impressão não corta tabelas nem sobrepõe gráficos.
+
+## Produção (implantação real)
+
+- [ ] `node scripts/importar_erp.mjs --origem ./erp --saida data_empresa` termina com 0 erros.
+- [ ] Spend, pedidos, OTIF e savings conciliados com o ERP em dois meses fechados.
+- [ ] Login funciona para admin/analista/comprador/leitor; leitor não importa nem administra.
+- [ ] Usuário com escopo por unidade baixa apenas os fatos permitidos.
+- [ ] Importação inválida retorna 422 e aparece em `logs/auditoria.jsonl`.
+- [ ] Importação válida persiste em `data/imported/`, cria backup e aparece no painel.
+- [ ] Cookie de sessão é `HttpOnly` e, atrás de HTTPS, `Secure`.
+- [ ] Backup do PostgreSQL, do volume de dados e dos usuários testado em restauração.
+- [ ] `docker compose -f docker-compose.prod.yml config` válido e healthcheck saudável.

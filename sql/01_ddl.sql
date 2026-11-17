@@ -29,7 +29,7 @@ CREATE TABLE dw.dim_calendario (
     eh_dia_util     boolean NOT NULL,
     eh_feriado      boolean NOT NULL DEFAULT false
 );
-COMMENT ON TABLE dw.dim_calendario IS 'Calendário contínuo 2023-01-01 a 2027-12-31, sem lacunas';
+COMMENT ON TABLE dw.dim_calendario IS 'Calendário contínuo 2015-01-01 a 2035-12-31, sem lacunas (ajuste para a janela histórica da empresa)';
 
 INSERT INTO dw.dim_calendario
 SELECT d::date,
@@ -43,26 +43,26 @@ SELECT d::date,
        trim(to_char(d, 'TMDay')),
        EXTRACT(isodow FROM d) NOT IN (6, 7),
        false
-FROM generate_series('2023-01-01'::date, '2027-12-31'::date, interval '1 day') d;
+FROM generate_series('2015-01-01'::date, '2035-12-31'::date, interval '1 day') d;
 
 CREATE TABLE dw.dim_unidade (
-    id_unidade  char(2) PRIMARY KEY,
-    unidade     varchar(60) NOT NULL,
+    id_unidade  varchar(20) PRIMARY KEY,
+    unidade     varchar(120) NOT NULL,
     cidade      varchar(60) NOT NULL,
     uf          char(2) NOT NULL,
     tipo        varchar(40) NOT NULL
 );
 
 CREATE TABLE dw.dim_comprador (
-    id_comprador  char(2) PRIMARY KEY,
-    comprador     varchar(80) NOT NULL,
-    id_unidade    char(2) NOT NULL REFERENCES dw.dim_unidade (id_unidade),
-    categoria_responsavel varchar(60) NOT NULL
+    id_comprador  varchar(20) PRIMARY KEY,
+    comprador     varchar(120) NOT NULL,
+    id_unidade    varchar(20) NOT NULL REFERENCES dw.dim_unidade (id_unidade),
+    categoria_responsavel varchar(80) NOT NULL
 );
 
 CREATE TABLE dw.dim_categoria (
-    id_categoria          char(2) PRIMARY KEY,
-    categoria             varchar(60) NOT NULL UNIQUE,
+    id_categoria          varchar(20) PRIMARY KEY,
+    categoria             varchar(100) NOT NULL UNIQUE,
     grupo                 varchar(30) NOT NULL,
     criticidade           varchar(10) NOT NULL CHECK (criticidade IN ('Alta', 'Média', 'Baixa')),
     natureza              varchar(30) NOT NULL,
@@ -73,18 +73,18 @@ CREATE TABLE dw.dim_categoria (
 COMMENT ON COLUMN dw.dim_categoria.drift_mensal IS 'Inflação média mensal esperada da categoria (usada no baseline de preços)';
 
 CREATE TABLE dw.dim_item (
-    id_item           char(4) PRIMARY KEY,
-    descricao         varchar(90) NOT NULL,
-    id_categoria      char(2) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
+    id_item           varchar(40) PRIMARY KEY,
+    descricao         varchar(160) NOT NULL,
+    id_categoria      varchar(20) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
     unidade_medida    varchar(14) NOT NULL,
-    preco_referencia  numeric(12, 2) NOT NULL CHECK (preco_referencia > 0),
+    preco_referencia  numeric(14, 4) NOT NULL CHECK (preco_referencia > 0),
     criticidade       varchar(10) NOT NULL
 );
 
 CREATE TABLE dw.dim_fornecedor (
-    id_fornecedor          char(4) PRIMARY KEY,
-    razao_social           varchar(120) NOT NULL,
-    id_categoria           char(2) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
+    id_fornecedor          varchar(40) PRIMARY KEY,
+    razao_social           varchar(160) NOT NULL,
+    id_categoria           varchar(20) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
     uf                     char(2) NOT NULL,
     porte                  varchar(12) NOT NULL,
     status                 varchar(20) NOT NULL CHECK (status IN ('Ativo', 'Em homologação', 'Suspenso', 'Inativo')),
@@ -99,9 +99,9 @@ CREATE INDEX ix_fornecedor_categoria ON dw.dim_fornecedor (id_categoria);
 CREATE INDEX ix_fornecedor_status ON dw.dim_fornecedor (status);
 
 CREATE TABLE dw.dim_contrato (
-    id_contrato     varchar(16) PRIMARY KEY,
-    id_fornecedor   char(4) NOT NULL REFERENCES dw.dim_fornecedor (id_fornecedor),
-    id_categoria    char(2) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
+    id_contrato     varchar(40) PRIMARY KEY,
+    id_fornecedor   varchar(40) NOT NULL REFERENCES dw.dim_fornecedor (id_fornecedor),
+    id_categoria    varchar(20) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
     data_inicio     date NOT NULL,
     data_fim        date NOT NULL,
     valor_anual     numeric(14, 2) NOT NULL CHECK (valor_anual >= 0),
@@ -117,29 +117,29 @@ CREATE INDEX ix_contrato_vigencia ON dw.dim_contrato (data_inicio, data_fim);
 -- ---------------------------------------------------------------------------
 -- Grão: 1 linha por pedido de compra (item/fornecedor/unidade)
 CREATE TABLE dw.fato_pedido (
-    id_pedido              varchar(16) PRIMARY KEY,
-    id_requisicao          varchar(20) NOT NULL,
+    id_pedido              varchar(40) PRIMARY KEY,
+    id_requisicao          varchar(40) NOT NULL,
     data_emissao           date NOT NULL REFERENCES dw.dim_calendario (data),
     mes_ref                char(7) NOT NULL,
-    id_fornecedor          char(4) NOT NULL REFERENCES dw.dim_fornecedor (id_fornecedor),
-    id_item                char(4) NOT NULL REFERENCES dw.dim_item (id_item),
-    id_categoria           char(2) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
-    id_comprador           char(2) NOT NULL REFERENCES dw.dim_comprador (id_comprador),
-    id_unidade             char(2) NOT NULL REFERENCES dw.dim_unidade (id_unidade),
-    quantidade             numeric(14, 3) NOT NULL CHECK (quantidade > 0),
-    valor_unitario         numeric(12, 2) NOT NULL CHECK (valor_unitario > 0),
-    frete                  numeric(12, 2) NOT NULL DEFAULT 0,
-    valor_total            numeric(14, 2) NOT NULL CHECK (valor_total >= 0),
-    preco_referencia       numeric(12, 2) NOT NULL,
-    saving_valor           numeric(14, 2) NOT NULL DEFAULT 0,   -- pode ser negativo (sobrepreço)
-    modalidade             varchar(14) NOT NULL,
+    id_fornecedor          varchar(40) NOT NULL REFERENCES dw.dim_fornecedor (id_fornecedor),
+    id_item                varchar(40) NOT NULL REFERENCES dw.dim_item (id_item),
+    id_categoria           varchar(20) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
+    id_comprador           varchar(20) NOT NULL REFERENCES dw.dim_comprador (id_comprador),
+    id_unidade             varchar(20) NOT NULL REFERENCES dw.dim_unidade (id_unidade),
+    quantidade             numeric(16, 4) NOT NULL CHECK (quantidade > 0),
+    valor_unitario         numeric(16, 4) NOT NULL CHECK (valor_unitario > 0),
+    frete                  numeric(14, 2) NOT NULL DEFAULT 0,
+    valor_total            numeric(16, 2) NOT NULL CHECK (valor_total >= 0),
+    preco_referencia       numeric(16, 4) NOT NULL,
+    saving_valor           numeric(16, 2) NOT NULL DEFAULT 0,   -- pode ser negativo (sobrepreço)
+    modalidade             varchar(30) NOT NULL,
     tem_contrato           boolean NOT NULL,
     data_entrega_prevista  date NOT NULL,
     data_entrega_real      date,
     atraso_dias            smallint NOT NULL DEFAULT 0 CHECK (atraso_dias >= 0),
-    qtd_recebida           numeric(14, 3) NOT NULL DEFAULT 0,
-    qtd_defeito            numeric(14, 3) NOT NULL DEFAULT 0,
-    status                 varchar(14) NOT NULL CHECK (status IN ('Entregue', 'Em trânsito', 'Parcial', 'Atrasado', 'Cancelado')),
+    qtd_recebida           numeric(16, 4) NOT NULL DEFAULT 0,
+    qtd_defeito            numeric(16, 4) NOT NULL DEFAULT 0,
+    status                 varchar(20) NOT NULL CHECK (status IN ('Entregue', 'Em trânsito', 'Parcial', 'Atrasado', 'Cancelado')),
     -- Fonte única da regra: prazo + completude + qualidade.
     otif                   smallint GENERATED ALWAYS AS (
                                CASE WHEN status = 'Entregue'
@@ -164,15 +164,15 @@ CREATE INDEX ix_pedido_mes ON dw.fato_pedido (mes_ref);
 -- Grão: 1 linha por proposta de fornecedor em uma requisição
 CREATE TABLE dw.fato_cotacao (
     id_cotacao             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_requisicao          varchar(20) NOT NULL,
+    id_requisicao          varchar(40) NOT NULL,
     data_cotacao           date NOT NULL REFERENCES dw.dim_calendario (data),
-    id_item                char(4) NOT NULL REFERENCES dw.dim_item (id_item),
-    id_categoria           char(2) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
-    id_fornecedor          char(4) NOT NULL REFERENCES dw.dim_fornecedor (id_fornecedor),
-    quantidade             numeric(14, 3) NOT NULL CHECK (quantidade > 0),
-    preco_unitario         numeric(12, 2) NOT NULL CHECK (preco_unitario > 0),
-    frete                  numeric(12, 2) NOT NULL DEFAULT 0,
-    valor_total            numeric(14, 2) NOT NULL CHECK (valor_total >= 0),
+    id_item                varchar(40) NOT NULL REFERENCES dw.dim_item (id_item),
+    id_categoria           varchar(20) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
+    id_fornecedor          varchar(40) NOT NULL REFERENCES dw.dim_fornecedor (id_fornecedor),
+    quantidade             numeric(16, 4) NOT NULL CHECK (quantidade > 0),
+    preco_unitario         numeric(16, 4) NOT NULL CHECK (preco_unitario > 0),
+    frete                  numeric(14, 2) NOT NULL DEFAULT 0,
+    valor_total            numeric(16, 2) NOT NULL CHECK (valor_total >= 0),
     prazo_entrega_dias     smallint NOT NULL,
     prazo_pagamento_dias   smallint NOT NULL,
     selecionada            smallint NOT NULL CHECK (selecionada IN (0, 1)),
@@ -187,10 +187,10 @@ CREATE INDEX ix_cotacao_fornecedor ON dw.fato_cotacao (id_fornecedor);
 -- Grão: 1 linha por item/mês (série de preços de mercado)
 CREATE TABLE dw.fato_preco (
     mes_ref           char(7) NOT NULL,
-    id_item           char(4) NOT NULL REFERENCES dw.dim_item (id_item),
-    id_categoria      char(2) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
-    preco_medio       numeric(12, 2) NOT NULL CHECK (preco_medio > 0),
-    indice_categoria  numeric(10, 4) NOT NULL,
+    id_item           varchar(40) NOT NULL REFERENCES dw.dim_item (id_item),
+    id_categoria      varchar(20) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
+    preco_medio       numeric(16, 4) NOT NULL CHECK (preco_medio > 0),
+    indice_categoria  numeric(12, 4) NOT NULL,
     variacao_mm_pct   numeric(8, 2) NOT NULL,
     PRIMARY KEY (mes_ref, id_item)
 );
@@ -198,10 +198,10 @@ CREATE TABLE dw.fato_preco (
 -- Grão: orçamento mensal por categoria e unidade
 CREATE TABLE dw.fato_orcamento (
     mes_ref       char(7) NOT NULL,
-    id_categoria  char(2) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
-    id_unidade    char(2) NOT NULL REFERENCES dw.dim_unidade (id_unidade),
-    orcamento     numeric(14, 2) NOT NULL CHECK (orcamento >= 0),
-    forecast      numeric(14, 2) NOT NULL CHECK (forecast >= 0),
+    id_categoria  varchar(20) NOT NULL REFERENCES dw.dim_categoria (id_categoria),
+    id_unidade    varchar(20) NOT NULL REFERENCES dw.dim_unidade (id_unidade),
+    orcamento     numeric(16, 2) NOT NULL CHECK (orcamento >= 0),
+    forecast      numeric(16, 2) NOT NULL CHECK (forecast >= 0),
     PRIMARY KEY (mes_ref, id_categoria, id_unidade)
 );
 

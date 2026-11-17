@@ -18,6 +18,20 @@ const PAGES = {
 let current = "exec";
 const $ = (id) => document.getElementById(id);
 
+function applyBranding() {
+  const emp = store.config?.empresa || {};
+  const marca = emp.marca || "Meridian BI";
+  if ($("brand-name")) $("brand-name").textContent = marca;
+  if ($("brand-sub")) $("brand-sub").textContent = emp.subtitulo || "Procurement Suite";
+  document.title = `${marca} · Compras & Fornecedores`;
+  const nome = store.usuario?.nome || store.usuario?.usuario;
+  if (nome && $("session-user")) {
+    $("session-user").style.display = "";
+    $("session-name").textContent = nome;
+    $("session-role").textContent = store.usuario.papelLabel || store.usuario.papel || "leitor";
+  }
+}
+
 function populateFilters() {
   const mk = (sel, items, value, labelFn) => {
     sel.querySelectorAll("option:not(:first-child)").forEach((o) => o.remove());
@@ -92,6 +106,7 @@ async function applyDataMode(mode, successMessage) {
     await loadData(mode);
     resetFilters();
     populateFilters();
+    applyBranding();
     refresh();
     toast(successMessage || `Fonte alterada para ${DATA_MODES[store.mode].label}.`, "good");
   } catch (err) {
@@ -125,7 +140,13 @@ function refresh() {
     renderPage(current);
     annotateCharts();
     updateSidebar();
-    if (current === "dados") initUpload(() => refresh());
+    if (current === "dados") initUpload(async () => {
+      // Em produção a importação é persistida no servidor: recarrega para
+      // incorporar o arquivo importado antes de redesenhar a página.
+      await loadData(store.mode);
+      populateFilters();
+      refresh();
+    });
   } catch (err) {
     console.error(err);
     $(`page-${current}`).innerHTML = `<div class="card"><div class="empty">Erro ao renderizar a página: ${esc(err.message)}</div></div>`;
@@ -177,6 +198,7 @@ function wire() {
     btn.disabled = true;
     try {
       await loadData(store.mode);
+      applyBranding();
       refresh();
       toast(`Dados recarregados · ${DATA_MODES[store.mode].label}.`, "good");
     } catch (e) { toast(`Falha ao recarregar: ${e.message}`, "bad"); }
@@ -193,6 +215,14 @@ function wire() {
     if (!hasFacts()) { toast("Sem dados para gerar o relatório.", "bad"); return; }
     try { exportPDF(buildContext()); }
     catch (e) { console.error(e); toast("Falha ao gerar relatório.", "bad"); }
+  });
+
+  $("btn-logout")?.addEventListener("click", async () => {
+    try {
+      await fetch("../api/logout", { method: "POST", headers: { "X-Requested-With": "fetch" } });
+    } finally {
+      window.location.href = "../login.html";
+    }
   });
 
   document.addEventListener("click", (e) => {
@@ -230,6 +260,7 @@ async function boot() {
     await loadData(store.mode);
     store.filters = defaultFilters();
     populateFilters();
+    applyBranding();
     bindTooltips(document);
     wire();
     toggleCustomDates();

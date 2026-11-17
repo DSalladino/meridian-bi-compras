@@ -156,12 +156,12 @@ export function daysBetween(fromISO, toISO) {
   return Math.round((to - from) / 864e5);
 }
 
-export function contractSituation(contract, asOf) {
+export function contractSituation(contract, asOf, alertDays = CONTRACT_ALERT_DAYS) {
   if (contract.status === "Suspenso") return "Suspenso";
   if (contract.status === "Encerrado" && contract.data_fim >= asOf) return "Encerrado";
   if (contract.data_inicio > asOf) return "Futuro";
   if (contract.data_fim < asOf) return "Vencido";
-  if (daysBetween(asOf, contract.data_fim) <= CONTRACT_ALERT_DAYS) return "A vencer";
+  if (daysBetween(asOf, contract.data_fim) <= alertDays) return "A vencer";
   return "Vigente";
 }
 
@@ -176,7 +176,9 @@ function contractOrders(contract, orders) {
   );
 }
 
-export function contractPortfolio(contracts = [], orders = [], asOf) {
+export function contractPortfolio(contracts = [], orders = [], asOf, options = {}) {
+  const alertDays = Number.isFinite(Number(options.alertDays)) ? Number(options.alertDays) : CONTRACT_ALERT_DAYS;
+  const reajusteLimit = Number.isFinite(Number(options.reajusteLimit)) ? Number(options.reajusteLimit) : CONTRACT_REAJUSTE_LIMIT;
   const rows = contracts.map((c) => {
     const docs = contractOrders(c, orders);
     const realizado = sum(docs, (p) => p.valor_total);
@@ -186,7 +188,7 @@ export function contractPortfolio(contracts = [], orders = [], asOf) {
       && p.id_categoria === c.id_categoria
       && p.data_emissao > c.data_fim
     );
-    const situacao = contractSituation(c, asOf);
+    const situacao = contractSituation(c, asOf, alertDays);
     const dias = daysBetween(asOf, c.data_fim);
     const execucao = num(c.valor_anual) ? realizado / num(c.valor_anual) : null;
     const alertas = [];
@@ -196,8 +198,8 @@ export function contractPortfolio(contracts = [], orders = [], asOf) {
       alertas.push({ level: "warn", code: "VENCIDO", message: "Contrato vencido sem pedidos ativos" });
     }
     if (situacao === "A vencer") alertas.push({ level: "warn", code: "A_VENCER", message: `Vence em ${dias} dias` });
-    if (num(c.reajuste_pct) > CONTRACT_REAJUSTE_LIMIT) {
-      alertas.push({ level: "warn", code: "REAJUSTE", message: `Reajuste de ${round(c.reajuste_pct, 2)}% acima do limite de ${CONTRACT_REAJUSTE_LIMIT}%` });
+    if (num(c.reajuste_pct) > reajusteLimit) {
+      alertas.push({ level: "warn", code: "REAJUSTE", message: `Reajuste de ${round(c.reajuste_pct, 2)}% acima do limite de ${reajusteLimit}%` });
     }
     if (execucao != null && execucao > 0.9) {
       alertas.push({ level: execucao > 1 ? "critical" : "info", code: "EXECUCAO", message: `Execução de ${round(execucao * 100, 1)}% do valor anual` });

@@ -10,14 +10,15 @@
 | Domínio | status permitidos, OTIF binário, criticidade | erro |
 | Consistência | entrega ≥ emissão, total ≈ quantidade × preço, saving reconciliado com o baseline (pode ser negativo) | erro / aviso |
 | Acurácia de regra | OTIF coerente com prazo/completude/qualidade | aviso |
-| Atualidade | competência mais recente ≥ mês corrente | aviso |
-| Volume | mínimo de pedidos e de propostas | aviso |
+| Atualidade | competência mais recente vs. mês corrente (tolerância de 2 meses) | aviso |
+| Volume | mínimo de pedidos e de propostas (base pequena é avisada, não bloqueada) | aviso |
 | Cobertura | todo mês/categoria/unidade com pedido tem orçamento | aviso |
 
 O pipeline (`etl/pipeline_etl.py`) grava o resultado em `etl/out/quality_report.json` com
 timestamp UTC, contagem por tabela e lista de checagens. **Erro bloqueia a carga; aviso é
 registrado e segue**, porque bloqueios por regra secundária tendem a parar a operação sem
-necessidade.
+necessidade. Contratos, cotações, preços e orçamento são **tabelas opcionais** no primeiro
+ciclo: ausência gera aviso e as páginas correspondentes mostram estado vazio.
 
 ## Regras de negócio implementadas
 
@@ -45,6 +46,8 @@ necessidade.
 | Exportação | ZIP/XLSX válido, CRC, XML e escaping de CSV | `npm test` |
 | ETL | validação, transformação, frete, saving negativo, recorte incremental | `npm run test:etl` |
 | Reconciliação SQL | carga × CSV, `vw_kpi_geral`, carteira contratual, checklist | `npm run test:sql` |
+| Importação de ERP | números/datas localizados, domínios, derivação e validação | `npm test` |
+| Acesso e auditoria | login, RBAC, escopo, importação persistida e trilha | `npm test` |
 | OTIF no banco | flag × regra canônica | `SELECT count(*) FROM dw.vw_otif_auditoria;` deve retornar 0 |
 | Rollback | staging + swap na mesma transação; `TRUNCATE` sem CASCADE | log do pipeline e `pg_stat_activity` |
 | Funcional (manual) | filtros, navegação, upload, exportações | checklist em `docs/checklist-qa.md`* |

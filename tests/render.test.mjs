@@ -42,3 +42,26 @@ test("gráfico de barras aceita rótulos que não são meses", () => {
   assert.match(svg, />1–2 d</);
   assert.doesNotMatch(svg, /undefined|NaN/);
 });
+
+test("páginas renderizam com base mínima: sem cotações, contratos, orçamento e item sem preço no mês", () => {
+  store.fato.cotacoes = [];
+  store.fato.orcamento = [];
+  store.dim.contratos = [];
+
+  // Mantém dois meses de preços e remove o mês mais recente de um item:
+  // o item fica sem variação de 12 meses e não pode virar NaN no gráfico.
+  const meses = [...new Set(store.fato.precos.map((p) => p.mes_ref))].sort();
+  const ultimo = meses[meses.length - 1];
+  const anterior = meses[meses.length - 2];
+  const semPreco = store.fato.precos.find((p) => p.mes_ref === ultimo)?.id_item;
+  store.fato.precos = store.fato.precos
+    .filter((p) => p.mes_ref === ultimo || p.mes_ref === anterior)
+    .filter((p) => !(p.id_item === semPreco && p.mes_ref === ultimo));
+
+  buildIndex();
+  for (const page of ["exec", "cotacoes", "fornecedores", "prazos", "precos", "contratos", "dados"]) {
+    renderPage(page);
+    const html = elements.get(`page-${page}`).innerHTML;
+    assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/, `base mínima: ${page}`);
+  }
+});

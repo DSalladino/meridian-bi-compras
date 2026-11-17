@@ -1,0 +1,27 @@
+{
+  "versao": 1,
+  "empresa": {
+    "nome": "Grupo Meridian",
+    "marca": "Meridian BI",
+    "subtitulo": "Procurement Suite",
+    "moeda": "BRL",
+    "locale": "pt-BR"
+  },
+  "metas": {
+    "otif": 0.9,
+    "saving": 0.06,
+    "aderencia": 1,
+    "coberturaContrato": 0.85,
+    "cotacoesPorRequisicao": 3,
+    "hhiCompetitivo": 1500,
+    "hhiModerado": 2500,
+    "alertaContratoDias": 90,
+    "reajusteLimite": 5,
+    "otifCriticoCategoria": 0.85,
+    "scoreMinimo": 70
+  },
+  "limites": {
+    "linhasUpload": 5000,
+    "tamanhoUploadMb": 5
+  }
+}

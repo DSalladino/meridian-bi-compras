@@ -173,3 +173,13 @@ fato_pedidos.csv ──► dw.fato_pedido ──► vw_spend_mensal ──► [S
 fato_cotacoes.csv ─► dw.fato_cotacao ─► vw_requisicao_negociacao ─► [Spread Médio Cotação]
 fato_orcamento.csv ► dw.fato_orcamento ─► vw_orcamento_aderencia ─► [Aderência Orçamento]
 ```
+
+## Entrada de dados reais
+
+O contrato canônico acima é alimentado por `scripts/importar_erp.mjs`, que mapeia as colunas
+do ERP para os nomes do modelo, normaliza número/data/domínio e grava os CSVs em
+`data_empresa/`. Quando um cadastro não é enviado, o importador cria a dimensão a partir do
+histórico (com aviso) para permitir o primeiro piloto apenas com pedidos. As chaves são
+`varchar` para aceitar códigos corporativos longos (até 40 caracteres), e o calendário do
+DDL cobre 2015–2035. O grão não muda: **1 linha por item de pedido** e **1 linha por proposta
+de requisição**.

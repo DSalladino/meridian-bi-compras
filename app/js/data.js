@@ -1,5 +1,6 @@
 /* Camada semântica: carga do dataset, filtros e agregações do modelo estrela. */
 import { parseCSV, sum, avg, groupBy, quantile, weightedAvg } from "./util.js";
+import { DEFAULT_CONFIG, loadConfig, normalizeConfig } from "./config.js";
 import {
   computeOtif, isDelivered, isValidSpend, supplierScore, supplierClassification, hhi,
   contractPortfolio, daysBetween,
@@ -92,6 +93,11 @@ export const store = {
   loadedAt: null,
   persistError: false,
   extra: { pedidos: [] },
+  config: structuredClone(DEFAULT_CONFIG),
+  metas: structuredClone(DEFAULT_CONFIG.metas),
+  limites: structuredClone(DEFAULT_CONFIG.limites),
+  api: false,
+  usuario: null,
 };
 
 function toObjects(text, numeric) {
@@ -107,8 +113,36 @@ function toObjects(text, numeric) {
   });
 }
 
+async function fetchOptional(url) {
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Descobre se o painel está atrás do servidor de produção (login/RBAC). */
+async function loadSession() {
+  try {
+    const res = await fetch("../api/session", { cache: "no-store", headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body?.autenticado ? body : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadData(mode = store.mode) {
   const nextMode = DATA_MODES[mode] ? mode : "demo";
+  const [config, session] = await Promise.all([loadConfig(), loadSession()]);
+  store.config = config;
+  store.metas = config.metas;
+  store.limites = config.limites;
+  store.usuario = session?.usuario || null;
+  store.api = Boolean(session);
+
   const entries = Object.entries(FILES);
   const texts = await Promise.all(entries.map(async ([key, [file]]) => {
     const res = await fetch(`../data/${file}`, { cache: "no-store" });
@@ -142,6 +176,17 @@ export async function loadData(mode = store.mode) {
   if (includeUploads) {
     const saved = restoreUploads();
     if (saved.length) store.fato.pedidos.push(...saved);
+    // Em produção o servidor persiste as importações; em GitHub Pages o
+    // arquivo não existe e o fallback continua sendo o localStorage.
+    const persisted = await fetchOptional("../data/imported/pedidos.csv");
+    if (persisted) {
+      const rows = toObjects(persisted, FILES.pedidos[1]).map((r) => ({ ...r, __upload: true }));
+      for (const row of rows) {
+        const i = store.fato.pedidos.findIndex((p) => p.id_pedido === row.id_pedido);
+        if (i >= 0) store.fato.pedidos[i] = row;
+        else store.fato.pedidos.push(row);
+      }
+    }
   }
 
   setDataMode(nextMode);
@@ -409,7 +454,10 @@ export function supplierScorecards(pedidos, cotacoes) {
 
 /** Gestão contratual (vencimentos, saldo, exposição e reajustes). */
 export function contractsOverview(asOf = store.maxDate) {
-  return contractPortfolio(store.dim.contratos, store.fato.pedidos, asOf);
+  return contractPortfolio(store.dim.contratos, store.fato.pedidos, asOf, {
+    alertDays: store.metas.alertaContratoDias,
+    reajusteLimit: store.metas.reajusteLimite,
+  });
 }
 
 export { daysBetween };
@@ -428,22 +476,24 @@ export function priceStats(precos, pedidos, f) {
     const base = sorted.find((x) => x.mes_ref === target12)?.preco_medio;
     const prev = sorted[sorted.length - 2]?.preco_medio;
     const spend = sum(spendByItem.get(idItem) || [], (p) => p.valor_total);
+    const variacao = cur != null && base ? cur / base - 1 : null;
+    const variacaoMes = cur != null && prev ? cur / prev - 1 : null;
     items.push({
       id: idItem, descricao: sorted[0]?.descricao_item || idItem, categoria: sorted[0]?.id_categoria,
-      preco: cur, variacao: base ? cur / base - 1 : null, variacaoMes: prev ? cur / prev - 1 : null,
+      preco: cur, variacao, variacaoMes,
       spend, serie: sorted.map((s) => ({ mes: s.mes_ref, preco: s.preco_medio })),
       indice: sorted[sorted.length - 1]?.indice_categoria || 1,
       variacaoMm: sorted[sorted.length - 1]?.variacao_mm_pct || 0,
     });
   }
   const weighted = weightedAvg(
-    items.filter((i) => i.variacao != null && i.spend > 0),
+    items.filter((i) => Number.isFinite(i.variacao) && i.spend > 0),
     (i) => i.variacao, (i) => i.spend
   );
   const byCat = groupBy(items, (i) => i.categoria);
   const categorias = [...byCat.entries()].map(([id, arr]) => ({
     id, nome: store.idx?.cById.get(id)?.categoria || id,
-    variacao: weightedAvg(arr.filter((i) => i.variacao != null), (i) => i.variacao, (i) => i.spend || 1),
+    variacao: weightedAvg(arr.filter((i) => Number.isFinite(i.variacao)), (i) => i.variacao, (i) => i.spend || 1),
     spend: sum(arr, (i) => i.spend), itens: arr.length,
   })).sort((a, b) => b.variacao - a.variacao);
   return {
@@ -568,6 +618,9 @@ export function clearUploads() {
 export function uploadsCount() {
   return store.fato.pedidos.filter((p) => p.__upload).length;
 }
+
+/** Configuração normalizada para consumidores externos (testes/onboarding). */
+export { normalizeConfig };
 
 /** Quantidade de importações salvas, mesmo quando o modo atual não as carrega. */
 export function storedUploadsCount() {

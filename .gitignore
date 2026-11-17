@@ -20,3 +20,13 @@ _site/
 Thumbs.db
 .vscode/
 .idea/
+
+# configuração local de empresa, credenciais e dados importados (nunca versionar)
+config/empresa.json
+config/usuarios.json
+.secrets/
+logs/
+data/imported/
+data/backups/
+data_empresa/
+erp/
